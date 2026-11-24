@@ -6,7 +6,7 @@
    - Avisa cuando hay una versión nueva de la app
    ============================================================ */
 
-const VERSION_APP = '0.3 (bloque 3)';
+const VERSION_APP = '0.3.1 (bloque 3)';
 
 /* ---------- Inicio ---------- */
 PANTALLAS.inicio = {

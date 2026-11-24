@@ -109,7 +109,7 @@ PANTALLAS.producto = {
 };
 
 /* ---------- Formulario de producto: #catalogo/P001, #catalogo/nuevo-farmacia ---------- */
-const UNIDADES_SUGERIDAS = ['comprimido', 'ml', 'ampolla', 'frasco', 'sobre', 'pipeta', 'dosis', 'tableta', 'unidad', 'par', 'kg'];
+const UNIDADES = ['comprimido', 'tableta', 'cápsula', 'ml', 'ampolla', 'frasco', 'pipeta', 'sobre', 'dosis', 'unidad', 'par', 'kg', 'g'];
 const PRESENTACIONES_SUGERIDAS = ['caja', 'frasco', 'atomizador', 'blíster', 'bolsa', 'saco', 'dispensador', 'unidad', 'paquete'];
 
 function camposProducto(p, prefijo = 'cp') {
@@ -124,23 +124,64 @@ function camposProducto(p, prefijo = 'cp') {
       </label>
       <label>Categoría<input id="${prefijo}-categoria" value="${escapar(p.categoria || '')}" placeholder="Ej.: Inyectable" autocomplete="off"></label>
     </div>
-    <div class="dos-columnas">
-      <label>Presentación<input id="${prefijo}-presentacion" list="lista-presentaciones" value="${escapar(p.presentacion || '')}" placeholder="caja, frasco…" autocomplete="off"></label>
-      <label>Unidad mínima<input id="${prefijo}-unidad" list="lista-unidades" value="${escapar(p.unidad_minima || '')}" placeholder="comprimido, ml…" autocomplete="off"></label>
-    </div>
-    <div class="dos-columnas">
-      <label>¿Cuántas trae cada presentación?<input id="${prefijo}-upp" type="number" inputmode="decimal" min="0" step="any" value="${escapar(p.unidades_por_presentacion ?? '')}"></label>
-      <label>Stock mínimo (en unidad mínima)<input id="${prefijo}-minimo" type="number" inputmode="decimal" min="0" step="any" value="${escapar(p.stock_minimo ?? '')}"></label>
-    </div>
-    <datalist id="lista-unidades">${UNIDADES_SUGERIDAS.map((u) => `<option value="${u}">`).join('')}</datalist>
+    <label>¿Cómo viene? (presentación)<input id="${prefijo}-presentacion" list="lista-presentaciones" value="${escapar(p.presentacion || '')}" placeholder="caja, frasco, atomizador…" autocomplete="off"></label>
+    ${camposContenido(p, prefijo)}
     <datalist id="lista-presentaciones">${PRESENTACIONES_SUGERIDAS.map((u) => `<option value="${u}">`).join('')}</datalist>`;
+}
+
+/**
+ * Campos que explican el contenido de una presentación, escritos como pregunta:
+ * "¿En qué se cuenta?" (comprimido, ml…) y "¿Cuántos trae cada caja?".
+ */
+function camposContenido(p, prefijo, presentacion) {
+  const unidad = p.unidad_minima || '';
+  const conocida = UNIDADES.includes(unidad);
+  const pres = presentacion || 'presentación';
+  return `
+    <label>¿En qué se cuenta al sacar? (la unidad más chica)
+      <select id="${prefijo}-unidad-sel">
+        <option value="">Elegir…</option>
+        ${UNIDADES.map((u) => `<option value="${u}" ${u === unidad ? 'selected' : ''}>${u}</option>`).join('')}
+        <option value="otra" ${unidad && !conocida ? 'selected' : ''}>Otra…</option>
+      </select>
+    </label>
+    <input id="${prefijo}-unidad-otra" class="${unidad && !conocida ? '' : 'oculto-total'}" value="${conocida ? '' : escapar(unidad)}" placeholder="Escribe la unidad (ej.: óvulo)" aria-label="Otra unidad" autocomplete="off">
+    <div class="dos-columnas">
+      <label>¿Cuántas trae cada ${escapar(pres)}?<input id="${prefijo}-upp" type="number" inputmode="decimal" min="0" step="any" value="${escapar(p.unidades_por_presentacion ?? '')}" placeholder="Ej.: 30"></label>
+      <label>Avisar si quedan menos de (opcional)<input id="${prefijo}-minimo" type="number" inputmode="decimal" min="0" step="any" value="${escapar(p.stock_minimo ?? '')}" placeholder="Ej.: 20"></label>
+    </div>
+    <p class="ayuda izquierda">Ej.: caja de 30 comprimidos → se cuenta en <strong>comprimido</strong> y trae <strong>30</strong>. Frasco de 100 ml → <strong>ml</strong> y <strong>100</strong>.</p>`;
+}
+
+/** Muestra el campo "Otra…" solo cuando se elige esa opción. */
+function conectarContenido(prefijo) {
+  const sel = document.getElementById(prefijo + '-unidad-sel');
+  const otra = document.getElementById(prefijo + '-unidad-otra');
+  if (!sel) return;
+  sel.addEventListener('change', () => {
+    otra.classList.toggle('oculto-total', sel.value !== 'otra');
+    if (sel.value === 'otra') otra.focus();
+  });
+}
+
+function leerUnidad(prefijo) {
+  const sel = document.getElementById(prefijo + '-unidad-sel').value;
+  return sel === 'otra' ? document.getElementById(prefijo + '-unidad-otra').value.trim() : sel;
+}
+
+/** Revisa que la unidad sea una palabra (no un número) y que la cantidad que trae sea mayor a cero. */
+function errorContenido(unidad, upp, presentacion) {
+  if (!unidad) return 'Elige en qué se cuenta (comprimido, ml, ampolla…).';
+  if (/^[\d.,\s]+$/.test(unidad)) return '"En qué se cuenta" debe ser una palabra (ej.: comprimido), no un número.';
+  if (!(Number(upp) > 0)) return 'Indica cuántas trae cada ' + (presentacion || 'presentación') + '.';
+  return '';
 }
 
 function leerCamposProducto(prefijo = 'cp') {
   const v = (c) => document.getElementById(prefijo + '-' + c).value.trim();
   return {
     nombre: v('nombre'), tipo: v('tipo'), categoria: v('categoria'), presentacion: v('presentacion'),
-    unidad_minima: v('unidad'), unidades_por_presentacion: v('upp'), stock_minimo: v('minimo')
+    unidad_minima: leerUnidad(prefijo), unidades_por_presentacion: v('upp'), stock_minimo: v('minimo')
   };
 }
 
@@ -154,7 +195,6 @@ PANTALLAS.catalogo = {
       <main class="contenido">
         <form id="form-producto" class="formulario">
           ${camposProducto(p)}
-          <p class="ayuda">Ej.: caja de 30 comprimidos → presentación "caja", unidad mínima "comprimido", trae 30.</p>
           <button class="boton-principal" type="submit">Guardar</button>
           <p id="mensaje-form" class="mensaje error" role="alert"></p>
         </form>
@@ -163,11 +203,17 @@ PANTALLAS.catalogo = {
 
   init(param) {
     const nuevo = !param || param.startsWith('nuevo');
+    conectarContenido('cp');
     document.getElementById('form-producto').addEventListener('submit', async (ev) => {
       ev.preventDefault();
-      const boton = ev.target.querySelector('button');
+      const boton = ev.target.querySelector('button[type=submit]');
       const producto = leerCamposProducto();
       if (!nuevo) producto.id = param;
+      // Los datos de contenido son opcionales al crear, pero si se llenan deben tener sentido.
+      if (producto.unidad_minima || producto.unidades_por_presentacion) {
+        const error = errorContenido(producto.unidad_minima, producto.unidades_por_presentacion, producto.presentacion);
+        if (error) { document.getElementById('mensaje-form').textContent = error; return; }
+      }
       boton.disabled = true; boton.textContent = 'Guardando…';
       try {
         const r = await llamarServidor('guardarProducto', { token: Acceso.sesion().token, producto });

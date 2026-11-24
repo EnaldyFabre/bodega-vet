@@ -119,16 +119,11 @@ const Ingreso = (() => {
         <div class="fila-entre"><strong>${escapar(p.nombre)}</strong><button type="button" class="boton-texto" id="cambiar-producto">Cambiar</button></div>
         ${falta ? `
           <div class="alerta-amarilla">Faltan datos de este producto. Complétalos una vez y quedan guardados.</div>
-          <div class="dos-columnas">
-            <label>Unidad mínima<input id="c-unidad" list="lista-unidades" value="${escapar(p.unidad_minima || '')}" placeholder="comprimido, ml…" autocomplete="off"></label>
-            <label>¿Cuántas trae cada ${escapar(p.presentacion || 'presentación')}?<input id="c-upp" type="number" inputmode="decimal" min="0" step="any" value="${escapar(p.unidades_por_presentacion || '')}"></label>
-          </div>
-          <label>Stock mínimo (opcional)<input id="c-minimo" type="number" inputmode="decimal" min="0" step="any" value="${escapar(p.stock_minimo || '')}"></label>
-          <datalist id="lista-unidades">${UNIDADES_SUGERIDAS.map((u) => `<option value="${u}">`).join('')}</datalist>`
+          ${camposContenido(p, 'c', p.presentacion)}`
         : `<span class="detalle">${escapar(p.presentacion || '')}${upp ? ' de ' + upp + ' ' + escapar(plural(p.unidad_minima, upp)) : ''}</span>`}
         <div class="dos-columnas">
           <label>Cantidad (${escapar(plural(p.presentacion || 'presentación', 2))})<input data-ed="cant" type="number" inputmode="numeric" min="0" step="1" value="${escapar(ed.cant)}"></label>
-          <label>${escapar(plural(p.unidad_minima || 'unidad', 2))} sueltos (opcional)<input data-ed="sueltas" type="number" inputmode="decimal" min="0" step="any" value="${escapar(ed.sueltas)}"></label>
+          <label>Sueltos${p.unidad_minima ? ' (' + escapar(plural(p.unidad_minima, 2)) + ')' : ''}, opcional<input data-ed="sueltas" type="number" inputmode="decimal" min="0" step="any" value="${escapar(ed.sueltas)}"></label>
         </div>
         <div class="dos-columnas">
           <label>N° de lote${obligatorio ? ' *' : ''}<input data-ed="n_lote" value="${escapar(ed.n_lote)}" autocomplete="off"></label>
@@ -184,6 +179,8 @@ const Ingreso = (() => {
     const cambiar = document.getElementById('cambiar-producto');
     if (cambiar) cambiar.addEventListener('click', () => { e.editor = editorVacio(); guardarBorrador(); dibujar(); });
 
+    conectarContenido('c');
+    conectarContenido('np');
     const agregar = document.getElementById('agregar-linea');
     if (agregar) agregar.addEventListener('click', agregarLinea);
 
@@ -209,12 +206,12 @@ const Ingreso = (() => {
     // Si faltaban datos del producto, se toman del formulario.
     if (Datos.faltanDatos(p)) {
       const completar = {
-        unidad_minima: document.getElementById('c-unidad').value.trim(),
+        unidad_minima: leerUnidad('c'),
         unidades_por_presentacion: document.getElementById('c-upp').value.trim(),
         stock_minimo: document.getElementById('c-minimo').value.trim()
       };
-      if (!completar.unidad_minima) return error('Indica la unidad mínima (ej.: comprimido, ml).');
-      if (!(Number(completar.unidades_por_presentacion) > 0)) return error('Indica cuántas unidades trae cada ' + (p.presentacion || 'presentación') + '.');
+      const problema = errorContenido(completar.unidad_minima, completar.unidades_por_presentacion, p.presentacion);
+      if (problema) return error(problema);
       e.completados[p.id] = completar;
       p = datosProducto(p.id);
     }

@@ -238,3 +238,4 @@ a.boton-principal, .boton-principal.enlace { display: flex; align-items: center;
   padding: calc(12px + env(safe-area-inset-top)) 16px 12px; background: var(--amarillo); color: var(--texto);
   font-size: 15px; font-weight: 700; font-family: inherit;
 }
+.oculto-total { display: none !important; }

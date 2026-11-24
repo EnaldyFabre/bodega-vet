@@ -40,7 +40,7 @@ function doPost(e) {
 
 /** Si alguien abre la URL en el navegador, solo confirma que el servidor está vivo (sin datos). */
 function doGet() {
-  return responder({ ok: true, servicio: 'Bodega API', version: 'bloque 3' });
+  return responder({ ok: true, servicio: 'Bodega API', version: 'bloque 3.1' });
 }
 
 // ============================================================
@@ -198,6 +198,10 @@ function guardarProducto(usuario, p) {
     activo: p.activo === false || p.activo === 'no' ? 'no' : 'sí'
   };
 
+  if (datos.unidad_minima && /^[\d.,\s]+$/.test(datos.unidad_minima)) {
+    throw new Error('"En qué se cuenta" debe ser una palabra (ej.: comprimido), no un número.');
+  }
+
   const productos = leerHoja('Productos').filter((x) => x.id);
   const repetido = productos.find((x) => x.nombre.toLowerCase() === nombre.toLowerCase() && x.id !== p.id);
   if (repetido) throw new Error('Ya existe un producto llamado "' + repetido.nombre + '".');
@@ -238,6 +242,9 @@ function registrarIngreso(usuario, d) {
     const p = productos[l.producto_id];
     if (!p) throw new Error('Línea ' + (i + 1) + ': producto no encontrado.');
     if (l.completar) Object.assign(p, l.completar);
+    if (!p.unidad_minima || /^[\d.,\s]+$/.test(String(p.unidad_minima))) {
+      throw new Error(p.nombre + ': falta indicar en qué se cuenta (comprimido, ml…), como palabra.');
+    }
     const upp = Number(p.unidades_por_presentacion);
     if (!(upp > 0)) throw new Error(p.nombre + ': falta indicar cuántas unidades trae cada ' + (p.presentacion || 'presentación') + '.');
     l.total = (Number(l.cantidad_presentaciones) || 0) * upp + (Number(l.unidades_sueltas) || 0);

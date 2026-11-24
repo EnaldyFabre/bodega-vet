@@ -72,7 +72,9 @@ const Datos = (() => {
   }
 
   /** Datos que faltan para poder usar el producto. */
-  function faltanDatos(p) { return !(Number(p.unidades_por_presentacion) > 0) || !p.unidad_minima; }
+  function faltanDatos(p) {
+    return !(Number(p.unidades_por_presentacion) > 0) || !p.unidad_minima || /^[\d.,\s]+$/.test(String(p.unidad_minima));
+  }
   function bajoMinimo(p) {
     const min = Number(p.stock_minimo);
     return min > 0 && stock(p.id) < min;
