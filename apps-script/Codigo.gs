@@ -1,7 +1,7 @@
 /**
  * ============================================================
  *  Bodega API — Servidor de la app Bodega Veterinaria
- *  Bloques 2, 3 y 4: acceso, catálogo, ingresos, salidas y tutores
+ *  Versión 1: acceso, catálogo, ingresos, salidas, tutores, lotes y alertas
  *
  *  Se pega en: planilla "App Bodega - Base de datos" → Extensiones → Apps Script
  *  Reemplaza por completo al código de prueba.
@@ -35,6 +35,9 @@ function doPost(e) {
       // Bloque 4
       case 'registrarSalida':  return responder(conBloqueo(() => registrarSalida(validarSesion(datos.token), datos)));
       case 'guardarTutor':     return responder(conBloqueo(() => guardarTutor(validarSesion(datos.token), datos.tutor)));
+
+      // Bloque 5
+      case 'actualizarLote':   return responder(conBloqueo(() => actualizarLote(validarSesion(datos.token), datos.lote)));
       default:                return responder({ ok: false, error: 'Acción desconocida.' });
     }
   } catch (err) {
@@ -44,7 +47,7 @@ function doPost(e) {
 
 /** Si alguien abre la URL en el navegador, solo confirma que el servidor está vivo (sin datos). */
 function doGet() {
-  return responder({ ok: true, servicio: 'Bodega API', version: 'bloque 4' });
+  return responder({ ok: true, servicio: 'Bodega API', version: 'version 1' });
 }
 
 // ============================================================
@@ -357,6 +360,29 @@ function registrarSalida(usuario, d) {
   });
 
   return { ok: true, tutor_id: tutorId };
+}
+
+/**
+ * Cambia datos de un lote: completar N° de lote y vencimiento (inventario inicial)
+ * o marcar su aviso de vencimiento como revisado.
+ */
+function actualizarLote(usuario, l) {
+  l = l || {};
+  const lote = leerHoja('Lotes').find((x) => x.id === l.id);
+  if (!lote) throw new Error('No se encontró el lote.');
+  const cambios = {};
+  if (l.n_lote !== undefined) cambios.n_lote = String(l.n_lote).trim();
+  if (l.vencimiento !== undefined) {
+    if (!/^\d{4}-\d{2}$/.test(l.vencimiento)) throw new Error('El vencimiento debe tener mes y año.');
+    cambios.vencimiento = l.vencimiento;
+    if (l.vencimiento !== lote.vencimiento) cambios.alerta_revisada = 'no'; // fecha nueva = aviso nuevo
+  }
+  if (l.alerta_revisada !== undefined) {
+    if (['sí', 'no'].indexOf(l.alerta_revisada) < 0) throw new Error('Valor no válido.');
+    cambios.alerta_revisada = l.alerta_revisada;
+  }
+  actualizarFila('Lotes', l.id, cambios);
+  return { ok: true };
 }
 
 /** Crea un tutor nuevo o actualiza sus datos (se busca por RUT). */

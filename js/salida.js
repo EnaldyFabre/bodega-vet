@@ -191,19 +191,18 @@ const Salida = (() => {
 
     boton.disabled = true; boton.textContent = 'Guardando…';
     try {
-      await llamarServidor('registrarSalida', {
-        token: Acceso.sesion().token,
+      const r = await Cola.enviar('registrarSalida', {
         id_dispositivo: idDispositivo(),
         salida: {
           id_mov: e.id_mov, producto_id: p.id, cantidad_unidades: total,
           tutor: e.entrega ? { rut: e.rut, nombre: e.nombre, direccion: e.direccion, telefono: e.telefono } : null,
           especie: e.especie, observacion: e.obs
         }
-      });
+      }, 'Salida: ' + p.nombre + ' (' + Datos.textoStock(p, total).split(' · ')[0] + ')');
       const id = p.id;
       e = nuevo();
-      await Datos.actualizar();
-      aviso('Salida registrada');
+      if (!r.enCola) await Datos.actualizar().catch(() => {});
+      aviso(r.enCola ? 'Sin señal: salida guardada en el teléfono. Se subirá sola.' : 'Salida registrada');
       location.hash = '#producto/' + id;
     } catch (x) {
       error(x.message);

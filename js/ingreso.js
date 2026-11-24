@@ -244,7 +244,7 @@ const Ingreso = (() => {
       aviso('Producto creado');
     } catch (x) {
       boton.disabled = false; boton.textContent = 'Crear producto';
-      aviso(x.message, 'error');
+      aviso(navigator.onLine ? x.message : 'Crear un producto nuevo necesita señal. Anótalo y créalo al subir a la oficina.', 'error');
     }
   }
 
@@ -257,8 +257,8 @@ const Ingreso = (() => {
     }
     boton.disabled = true; boton.textContent = 'Guardando…';
     try {
-      const r = await llamarServidor('registrarIngreso', {
-        token: Acceso.sesion().token,
+      const lineas = e.lineas.length;
+      const r = await Cola.enviar('registrarIngreso', {
         id_dispositivo: idDispositivo(),
         documento: { tipo: e.tipo, n_documento: e.n_documento, fecha_recepcion: e.fecha, proveedor: e.proveedor },
         lineas: e.lineas.map((l) => ({
@@ -267,14 +267,14 @@ const Ingreso = (() => {
           n_lote: l.n_lote, vencimiento: l.venc,
           completar: e.completados[l.producto_id] || null
         }))
-      });
+      }, 'Ingreso (' + e.tipo + (e.n_documento ? ' ' + e.n_documento : '') + '): ' + lineas + ' producto' + (lineas > 1 ? 's' : ''));
       borrarBorrador();
-      await Datos.actualizar();
-      aviso('Ingreso guardado (' + (r.guardadas || 0) + ' producto' + (r.guardadas === 1 ? '' : 's') + ')');
+      if (!r.enCola) await Datos.actualizar().catch(() => {});
+      aviso(r.enCola ? 'Sin señal: ingreso guardado en el teléfono. Se subirá solo.' : 'Ingreso guardado (' + lineas + ' producto' + (lineas > 1 ? 's' : '') + ')');
       location.hash = '#inicio';
     } catch (x) {
       // El borrador queda guardado: se puede reintentar al tener señal.
-      mensaje.textContent = x.message + (navigator.onLine ? '' : ' Lo anotado queda guardado en el teléfono; intenta de nuevo al tener señal.');
+      mensaje.textContent = x.message;
       boton.disabled = false; boton.textContent = 'Guardar ingreso';
     }
   }

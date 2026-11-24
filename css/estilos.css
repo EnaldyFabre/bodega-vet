@@ -259,3 +259,14 @@ a.boton-principal, .boton-principal.enlace { display: flex; align-items: center;
 .formulario-suelto { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--texto-suave); }
 .formulario-suelto textarea, .formulario textarea { border: 1px solid #C9CEDB; border-radius: 12px; padding: 10px 12px; font-size: 16px; font-family: inherit; resize: vertical; background: var(--blanco); color: var(--texto); }
 .enlace-texto { color: var(--azul); font-weight: 600; text-decoration: underline; }
+
+/* ============================================================
+   Bloque 5: alertas y registros por subir
+   ============================================================ */
+a.estado { text-decoration: none; }
+.enlace-aviso { padding: 6px 0; color: var(--texto); }
+.enlace-aviso + .enlace-aviso { border-top: 1px solid #EEF0F6; }
+.numero.gris { background: #ECEEF3; color: var(--texto-suave); }
+.etiqueta.amarilla { background: var(--amarillo-claro); color: var(--amarillo-texto); }
+.boton-borde.rojo { border-color: var(--rojo-texto); color: var(--rojo-texto); }
+.tarjeta.linea .boton-borde, .tarjeta.linea .dos-botones { margin-top: 8px; }

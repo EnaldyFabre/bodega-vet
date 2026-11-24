@@ -6,7 +6,7 @@
    - Avisa cuando hay una versión nueva de la app
    ============================================================ */
 
-const VERSION_APP = '0.4 (bloque 4)';
+const VERSION_APP = '1.0 (versión 1)';
 
 /* ---------- Inicio ---------- */
 PANTALLAS.inicio = {
@@ -14,12 +14,24 @@ PANTALLAS.inicio = {
     const nombre = escapar((Acceso.usuario() || {}).nombre || '');
     const farmacia = Datos.productos('Farmacia').length;
     const bodega = Datos.productos('Bodega').length;
-    const bajos = Datos.productos().filter((p) => Datos.bajoMinimo(p)).length;
-    const sinDatos = Datos.productos().filter((p) => Datos.faltanDatos(p)).length;
+    // Avisos: cada uno lleva a su lista (#alertas/...)
+    const vencen = Alertas.porVencer();
+    const sinFecha = Alertas.sinFecha().length;
+    const bajos = Alertas.bajoMinimo().length;
+    const sinDatos = Alertas.sinDatos().length;
+    const fila = (destino, n, color, texto, detalle = '') => `
+      <a href="#alertas/${destino}" class="aviso enlace-aviso">
+        <span class="numero ${color}">${n}</span>
+        <span>${texto}${detalle ? `<span class="detalle">${detalle}</span>` : ''}</span>
+      </a>`;
+    const primero = vencen[0] ? Datos.producto(vencen[0].producto_id) : null;
 
     const avisos = [];
-    if (bajos) avisos.push(`<div class="aviso"><span class="numero rojo">${bajos}</span><span>producto${bajos > 1 ? 's' : ''} bajo el stock mínimo</span></div>`);
-    if (sinDatos) avisos.push(`<div class="aviso"><span class="numero amarillo">${sinDatos}</span><span>producto${sinDatos > 1 ? 's' : ''} con datos por completar (se piden al ingresarlos)</span></div>`);
+    if (vencen.length) avisos.push(fila('vencen', vencen.length, 'amarillo', 'lote' + (vencen.length > 1 ? 's' : '') + ' por vencer',
+      escapar(primero.nombre + (vencen[0].n_lote ? ' · lote ' + vencen[0].n_lote : '') + ' · vence ' + textoMes(vencen[0].vencimiento))));
+    if (bajos) avisos.push(fila('minimo', bajos, 'rojo', 'producto' + (bajos > 1 ? 's' : '') + ' bajo el stock mínimo'));
+    if (sinFecha) avisos.push(fila('sinfecha', sinFecha, 'amarillo', 'lote' + (sinFecha > 1 ? 's' : '') + ' sin fecha de vencimiento'));
+    if (sinDatos) avisos.push(fila('datos', sinDatos, 'gris', 'producto' + (sinDatos > 1 ? 's' : '') + ' con datos por completar'));
 
     return `
       ${encabezado('Hola, ' + nombre)}
@@ -71,7 +83,7 @@ function mostrarPantalla() {
 }
 
 /* Pantallas que se pueden redibujar al llegar datos nuevos sin perder lo que se está escribiendo */
-const PANTALLAS_DE_LECTURA = ['inicio', 'productos', 'producto', 'tutores', 'historial'];
+const PANTALLAS_DE_LECTURA = ['inicio', 'productos', 'producto', 'tutores', 'historial', 'alertas', 'pendientes'];
 
 async function refrescarDatos() {
   try {
@@ -91,7 +103,8 @@ async function refrescarDatos() {
 /* La llama acceso.js cuando la persona ya entró con su PIN. */
 function iniciarApp() {
   mostrarPantalla();
-  refrescarDatos();
+  // Primero sube lo pendiente (si hay señal) y luego trae los datos al día.
+  Cola.sincronizar().finally(refrescarDatos);
 }
 
 function actualizarEstado() {
@@ -101,7 +114,7 @@ function actualizarEstado() {
 
 // Solo cambia de pantalla si la app está desbloqueada (si no, se queda en la pantalla del PIN).
 window.addEventListener('hashchange', () => { if (document.querySelector('.encabezado')) mostrarPantalla(); });
-window.addEventListener('online', () => { actualizarEstado(); if (Acceso.sesion()) refrescarDatos(); });
+window.addEventListener('online', () => { actualizarEstado(); if (Acceso.sesion()) Cola.sincronizar().finally(refrescarDatos); });
 window.addEventListener('offline', actualizarEstado);
 
 // Al abrir la app, primero se revisa el acceso (correo/código/PIN).

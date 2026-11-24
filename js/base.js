@@ -29,13 +29,14 @@ function icono(nombre, clase = '') {
 function registrosPendientes() {
   try { return (JSON.parse(localStorage.getItem('cola') || '[]')).length; } catch (e) { return 0; }
 }
+// Al tocarla, abre la lista de registros por subir.
 function etiquetaEstado() {
   const pendientes = registrosPendientes();
   if (!navigator.onLine) {
-    return `<span class="estado sin-senal">${icono('nube')} Sin señal${pendientes ? ' · ' + pendientes + ' por subir' : ''}</span>`;
+    return `<a href="#pendientes" class="estado sin-senal">${icono('nube')} Sin señal${pendientes ? ' · ' + pendientes + ' por subir' : ''}</a>`;
   }
-  if (pendientes) return `<span class="estado pendiente">${icono('nube')} ${pendientes} por subir</span>`;
-  return `<span class="estado ok">${icono('nube')} Al día</span>`;
+  if (pendientes) return `<a href="#pendientes" class="estado pendiente">${icono('nube')} ${pendientes} por subir</a>`;
+  return `<a href="#pendientes" class="estado ok">${icono('nube')} Al día</a>`;
 }
 
 /* ---------- Encabezado y menú ---------- */

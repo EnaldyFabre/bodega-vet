@@ -21,8 +21,65 @@ const Datos = (() => {
       productos: r.productos, lotes: r.lotes, stock: r.stock,
       movimientos: r.movimientos, tutores: r.tutores || [], actualizado: r.actualizado
     };
-    localStorage.setItem(CLAVE, JSON.stringify(cache));
+    // Lo que todavía está en la cola (sin subir) se vuelve a reflejar encima de los datos nuevos.
+    leerCola().forEach((x) => aplicarLocal(x.accion, x.datos, false));
+    guardarCache();
     return true;
+  }
+
+  function guardarCache() { localStorage.setItem(CLAVE, JSON.stringify(cache)); }
+  function leerCola() {
+    try { return JSON.parse(localStorage.getItem('cola')) || []; } catch (e) { return []; }
+  }
+
+  /**
+   * Refleja en la app un registro hecho sin señal (stock, lotes, movimientos, tutores),
+   * para que todo se vea al día aunque todavía no se haya subido.
+   */
+  function aplicarLocal(accion, d, guardar = true) {
+    if (!cache) return;
+    const usuario = (Acceso.usuario() || {}).nombre || '';
+    cache.stock = cache.stock || {};
+    cache.movimientos = cache.movimientos || [];
+
+    if (accion === 'registrarSalida') {
+      const s = d.salida;
+      if (cache.movimientos.some((m) => m.id === s.id_mov)) return;
+      let tutorId = '';
+      if (s.tutor && s.tutor.rut) {
+        cache.tutores = cache.tutores || [];
+        let t = tutorPorRut(s.tutor.rut);
+        if (t) Object.assign(t, { nombre: s.tutor.nombre, direccion: s.tutor.direccion, telefono: s.tutor.telefono });
+        else {
+          t = { id: 'pend-' + limpiarRut(s.tutor.rut), rut: formatearRut(s.tutor.rut), nombre: s.tutor.nombre, direccion: s.tutor.direccion, telefono: s.tutor.telefono };
+          cache.tutores.push(t);
+        }
+        tutorId = t.id;
+      }
+      cache.stock[s.producto_id] = (cache.stock[s.producto_id] || 0) - Number(s.cantidad_unidades);
+      cache.movimientos.push({ id: s.id_mov, fecha_hora: ahoraLocal(), producto_id: s.producto_id, tipo: 'salida', cantidad_unidades: Number(s.cantidad_unidades), usuario, tutor_id: tutorId, especie: s.especie, pendiente: true });
+    }
+
+    if (accion === 'registrarIngreso') {
+      const doc = d.documento || {};
+      d.lineas.forEach((l) => {
+        if (cache.movimientos.some((m) => m.id === l.id_mov)) return;
+        const p = producto(l.producto_id);
+        if (!p) return;
+        if (l.completar) Object.assign(p, l.completar);
+        const total = (Number(l.cantidad_presentaciones) || 0) * Number(p.unidades_por_presentacion) + (Number(l.unidades_sueltas) || 0);
+        cache.stock[p.id] = (cache.stock[p.id] || 0) + total;
+        cache.lotes.push({ id: 'pend-' + l.id_mov, producto_id: p.id, cantidad_presentaciones: l.cantidad_presentaciones, cantidad_unidades: total, n_lote: l.n_lote, vencimiento: l.vencimiento, alerta_revisada: 'no', doc_tipo: doc.tipo, doc_numero: doc.n_documento, fecha_recepcion: doc.fecha_recepcion, proveedor: doc.proveedor, pendiente: true });
+        cache.movimientos.push({ id: l.id_mov, fecha_hora: ahoraLocal(), producto_id: p.id, tipo: 'ingreso', cantidad_unidades: total, usuario, pendiente: true });
+      });
+    }
+
+    if (accion === 'actualizarLote') {
+      const lote = (cache.lotes || []).find((x) => x.id === d.lote.id);
+      if (lote) Object.assign(lote, d.lote);
+    }
+
+    if (guardar) guardarCache();
   }
 
   function hay() { return !!cache; }
@@ -46,6 +103,7 @@ const Datos = (() => {
     return ((cache && cache.movimientos) || []).filter((m) => m.producto_id === id).slice(-cuantos).reverse();
   }
   function actualizado() { return cache && cache.actualizado; }
+  function lotes() { return (cache && cache.lotes) || []; }
   function movimientos() { return ((cache && cache.movimientos) || []).slice().reverse(); }
 
   // ---------- Tutores ----------
@@ -91,7 +149,7 @@ const Datos = (() => {
     return min > 0 && stock(p.id) < min;
   }
 
-  return { actualizar, hay, olvidar, productos, producto, stock, lotesDe, movimientosDe, movimientos, actualizado, buscar, textoStock, faltanDatos, bajoMinimo, tutores, tutor, tutorPorRut };
+  return { actualizar, aplicarLocal, lotes, hay, olvidar, productos, producto, stock, lotesDe, movimientosDe, movimientos, actualizado, buscar, textoStock, faltanDatos, bajoMinimo, tutores, tutor, tutorPorRut };
 })();
 
 // ---------- Ayudantes generales ----------
@@ -153,4 +211,10 @@ function formatearRut(rut) {
 function textoHora(valor) {
   const m = /T(\d{2}:\d{2})/.exec(valor || '');
   return m ? m[1] : '';
+}
+
+/** Fecha y hora actual en formato "2026-11-24T17:30" (hora del teléfono). */
+function ahoraLocal() {
+  const d = new Date(), dos = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + dos(d.getMonth() + 1) + '-' + dos(d.getDate()) + 'T' + dos(d.getHours()) + ':' + dos(d.getMinutes());
 }
