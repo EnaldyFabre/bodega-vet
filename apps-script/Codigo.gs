@@ -1,7 +1,7 @@
 /**
  * ============================================================
  *  Bodega API — Servidor de la app Bodega Veterinaria
- *  Bloque 2: acceso con código por correo + sesiones
+ *  Bloques 2 y 3: acceso, catálogo e ingresos
  *
  *  Se pega en: planilla "App Bodega - Base de datos" → Extensiones → Apps Script
  *  Reemplaza por completo al código de prueba.
@@ -26,6 +26,11 @@ function doPost(e) {
       case 'verificarCodigo': return responder(verificarCodigo(datos.correo, datos.codigo));
       case 'sesion':          return responder({ ok: true, usuario: validarSesion(datos.token) });
       case 'cerrarSesion':    return responder(cerrarSesion(datos.token));
+
+      // Bloque 3 (todas exigen una sesión válida)
+      case 'datos':            return responder(obtenerDatos(validarSesion(datos.token)));
+      case 'guardarProducto':  return responder(conBloqueo(() => guardarProducto(validarSesion(datos.token), datos.producto)));
+      case 'registrarIngreso': return responder(conBloqueo(() => registrarIngreso(validarSesion(datos.token), datos)));
       default:                return responder({ ok: false, error: 'Acción desconocida.' });
     }
   } catch (err) {
@@ -35,7 +40,7 @@ function doPost(e) {
 
 /** Si alguien abre la URL en el navegador, solo confirma que el servidor está vivo (sin datos). */
 function doGet() {
-  return responder({ ok: true, servicio: 'Bodega API', version: 'bloque 2' });
+  return responder({ ok: true, servicio: 'Bodega API', version: 'bloque 3' });
 }
 
 // ============================================================
@@ -138,6 +143,172 @@ function cerrarSesion(token) {
 }
 
 // ============================================================
+//  CATÁLOGO, STOCK E INGRESOS (Bloque 3)
+// ============================================================
+
+/** Entrega a la app todo lo que necesita mostrar: productos, stock, lotes y últimos movimientos. */
+function obtenerDatos(usuario) {
+  const productos = leerHoja('Productos').filter((p) => p.id);
+  const documentos = {};
+  leerHoja('Documentos').forEach((d) => { documentos[d.id] = d; });
+
+  const lotes = leerHoja('Lotes').filter((l) => l.id).map((l) => {
+    const d = documentos[l.documento_id] || {};
+    return Object.assign(l, {
+      doc_tipo: d.tipo || '', doc_numero: d.n_documento || '',
+      fecha_recepcion: d.fecha_recepcion || '', proveedor: d.proveedor || ''
+    });
+  });
+
+  // Stock = suma de ingresos − salidas (+/− ajustes), en unidades mínimas.
+  const movimientos = leerHoja('Movimientos').filter((m) => m.id);
+  const stock = {};
+  movimientos.forEach((m) => {
+    const cantidad = Number(m.cantidad_unidades) || 0;
+    const signo = m.tipo === 'salida' ? -1 : 1; // en "ajuste" la cantidad ya viene con su signo
+    stock[m.producto_id] = (stock[m.producto_id] || 0) + signo * cantidad;
+  });
+
+  return {
+    ok: true,
+    usuario: usuario,
+    productos: productos,
+    lotes: lotes,
+    stock: stock,
+    movimientos: movimientos.slice(-300), // los últimos 300, para fichas e historial
+    actualizado: new Date().toISOString()
+  };
+}
+
+/** Crea un producto nuevo o actualiza uno existente (si trae id). */
+function guardarProducto(usuario, p) {
+  p = p || {};
+  const nombre = String(p.nombre || '').trim();
+  if (!nombre) throw new Error('El producto necesita un nombre.');
+  if (['Farmacia', 'Bodega'].indexOf(p.tipo) < 0) throw new Error('El tipo debe ser Farmacia o Bodega.');
+
+  const datos = {
+    nombre: nombre,
+    tipo: p.tipo,
+    categoria: String(p.categoria || '').trim(),
+    presentacion: String(p.presentacion || '').trim(),
+    unidad_minima: String(p.unidad_minima || '').trim(),
+    unidades_por_presentacion: numeroOVacio(p.unidades_por_presentacion),
+    stock_minimo: numeroOVacio(p.stock_minimo),
+    activo: p.activo === false || p.activo === 'no' ? 'no' : 'sí'
+  };
+
+  const productos = leerHoja('Productos').filter((x) => x.id);
+  const repetido = productos.find((x) => x.nombre.toLowerCase() === nombre.toLowerCase() && x.id !== p.id);
+  if (repetido) throw new Error('Ya existe un producto llamado "' + repetido.nombre + '".');
+
+  if (p.id) {
+    if (!productos.find((x) => x.id === p.id)) throw new Error('No se encontró el producto.');
+    actualizarFila('Productos', p.id, datos);
+    return { ok: true, producto: Object.assign({ id: p.id }, datos) };
+  }
+
+  datos.id = siguienteId(productos, 'P', 3);
+  agregarFila('Productos', datos);
+  return { ok: true, producto: datos };
+}
+
+/**
+ * Registra un ingreso: un documento (factura, boleta, sin documento o inventario inicial)
+ * con una o varias líneas de productos. Cada línea crea un lote y un movimiento de ingreso.
+ */
+function registrarIngreso(usuario, d) {
+  const doc = d.documento || {};
+  const lineas = d.lineas || [];
+  const tipos = ['Factura', 'Boleta', 'Sin documento', 'Inventario inicial'];
+  if (tipos.indexOf(doc.tipo) < 0) throw new Error('Tipo de documento no válido.');
+  if (!lineas.length) throw new Error('Agrega al menos un producto.');
+  const esInventario = doc.tipo === 'Inventario inicial';
+
+  // Evita duplicados: si una línea ya se guardó antes (mismo id), se salta.
+  const yaGuardados = {};
+  leerHoja('Movimientos').forEach((m) => { yaGuardados[m.id] = true; });
+  const nuevas = lineas.filter((l) => l.id_mov && !yaGuardados[l.id_mov]);
+  if (!nuevas.length) return { ok: true, repetido: true, guardadas: 0 };
+
+  // Revisa todas las líneas ANTES de escribir nada.
+  const productos = {};
+  leerHoja('Productos').forEach((p) => { productos[p.id] = p; });
+  nuevas.forEach((l, i) => {
+    const p = productos[l.producto_id];
+    if (!p) throw new Error('Línea ' + (i + 1) + ': producto no encontrado.');
+    if (l.completar) Object.assign(p, l.completar);
+    const upp = Number(p.unidades_por_presentacion);
+    if (!(upp > 0)) throw new Error(p.nombre + ': falta indicar cuántas unidades trae cada ' + (p.presentacion || 'presentación') + '.');
+    l.total = (Number(l.cantidad_presentaciones) || 0) * upp + (Number(l.unidades_sueltas) || 0);
+    if (!(l.total > 0)) throw new Error(p.nombre + ': la cantidad debe ser mayor a cero.');
+    if (p.tipo === 'Farmacia' && !esInventario && (!l.n_lote || !l.vencimiento)) {
+      throw new Error(p.nombre + ': el N° de lote y el vencimiento son obligatorios en Farmacia.');
+    }
+  });
+
+  // Documento: el inventario inicial usa siempre el mismo (D0001); los demás crean uno nuevo.
+  const documentos = leerHoja('Documentos').filter((x) => x.id);
+  let documentoId;
+  const ahora = new Date();
+  if (esInventario) {
+    const inv = documentos.find((x) => x.tipo === 'Inventario inicial');
+    if (!inv) throw new Error('No se encontró el documento de Inventario inicial en la planilla.');
+    documentoId = inv.id;
+  } else {
+    documentoId = siguienteId(documentos, 'D', 4);
+    agregarFila('Documentos', {
+      id: documentoId,
+      tipo: doc.tipo,
+      n_documento: String(doc.n_documento || '').trim(),
+      fecha_recepcion: String(doc.fecha_recepcion || '').trim(),
+      proveedor: String(doc.proveedor || '').trim(),
+      ingresado_por: usuario.nombre,
+      fecha_hora_registro: ahora
+    });
+  }
+
+  // Líneas: completa datos faltantes del producto, crea el lote y el movimiento.
+  let lotes = leerHoja('Lotes').filter((x) => x.id);
+  nuevas.forEach((l) => {
+    if (l.completar) {
+      actualizarFila('Productos', l.producto_id, {
+        unidad_minima: String(l.completar.unidad_minima || '').trim(),
+        unidades_por_presentacion: numeroOVacio(l.completar.unidades_por_presentacion),
+        stock_minimo: numeroOVacio(l.completar.stock_minimo)
+      });
+    }
+    const loteId = siguienteId(lotes, 'L', 5);
+    const lote = {
+      id: loteId,
+      documento_id: documentoId,
+      producto_id: l.producto_id,
+      cantidad_presentaciones: Number(l.cantidad_presentaciones) || 0,
+      cantidad_unidades: l.total,
+      n_lote: String(l.n_lote || '').trim(),
+      vencimiento: String(l.vencimiento || '').trim(),
+      alerta_revisada: 'no'
+    };
+    agregarFila('Lotes', lote);
+    lotes = lotes.concat([lote]);
+
+    agregarFila('Movimientos', {
+      id: l.id_mov,
+      fecha_hora: ahora,
+      producto_id: l.producto_id,
+      lote_id: loteId,
+      tipo: 'ingreso',
+      cantidad_unidades: l.total,
+      usuario: usuario.nombre,
+      observacion: String(l.observacion || '').trim(),
+      id_dispositivo: String(d.id_dispositivo || '')
+    });
+  });
+
+  return { ok: true, documento_id: documentoId, guardadas: nuevas.length };
+}
+
+// ============================================================
 //  AYUDANTES
 // ============================================================
 
@@ -158,6 +329,78 @@ function buscarUsuario(correo) {
     }
   }
   return null;
+}
+
+// Columnas que se guardan como texto (para que la planilla no las convierta en fechas o números).
+const COLUMNAS_TEXTO = ['id', 'n_lote', 'vencimiento', 'n_documento', 'fecha_recepcion', 'rut', 'telefono',
+  'producto_id', 'documento_id', 'lote_id', 'tutor_id'];
+
+/** Lee una hoja completa y la entrega como lista de objetos {columna: valor}. */
+function leerHoja(nombre) {
+  const filas = SpreadsheetApp.getActive().getSheetByName(nombre).getDataRange().getValues();
+  const titulos = filas.shift();
+  return filas.map((fila) => {
+    const obj = {};
+    titulos.forEach((t, i) => {
+      let v = fila[i];
+      if (v instanceof Date) v = Utilities.formatDate(v, 'America/Santiago', "yyyy-MM-dd'T'HH:mm");
+      obj[t] = v;
+      if (COLUMNAS_TEXTO.indexOf(t) >= 0 && v !== '') obj[t] = String(v);
+    });
+    return obj;
+  });
+}
+
+/** Agrega una fila al final de una hoja, ubicando cada dato bajo su columna. */
+function agregarFila(nombre, obj) {
+  const hoja = SpreadsheetApp.getActive().getSheetByName(nombre);
+  const titulos = hoja.getRange(1, 1, 1, hoja.getLastColumn()).getValues()[0];
+  const fila = hoja.getLastRow() + 1;
+  titulos.forEach((t, i) => {
+    if (COLUMNAS_TEXTO.indexOf(t) >= 0) hoja.getRange(fila, i + 1).setNumberFormat('@');
+  });
+  hoja.getRange(fila, 1, 1, titulos.length).setValues([titulos.map((t) => (obj[t] === undefined ? '' : obj[t]))]);
+}
+
+/** Cambia algunas columnas de la fila cuyo id coincide. */
+function actualizarFila(nombre, id, cambios) {
+  const hoja = SpreadsheetApp.getActive().getSheetByName(nombre);
+  const datos = hoja.getDataRange().getValues();
+  const titulos = datos[0];
+  for (let r = 1; r < datos.length; r++) {
+    if (String(datos[r][0]) === String(id)) {
+      Object.keys(cambios).forEach((c) => {
+        const col = titulos.indexOf(c);
+        if (col < 0) return;
+        const celda = hoja.getRange(r + 1, col + 1);
+        if (COLUMNAS_TEXTO.indexOf(c) >= 0) celda.setNumberFormat('@');
+        celda.setValue(cambios[c]);
+      });
+      return;
+    }
+  }
+  throw new Error('No se encontró ' + id + ' en ' + nombre + '.');
+}
+
+/** Siguiente id correlativo: P040, D0002, L00001… */
+function siguienteId(lista, prefijo, digitos) {
+  let max = 0;
+  lista.forEach((x) => {
+    const n = parseInt(String(x.id).replace(prefijo, ''), 10);
+    if (n > max) max = n;
+  });
+  return prefijo + String(max + 1).padStart(digitos, '0');
+}
+
+function numeroOVacio(v) {
+  return v === '' || v === null || v === undefined || isNaN(Number(v)) ? '' : Number(v);
+}
+
+/** Evita que dos teléfonos escriban al mismo tiempo y se pisen. */
+function conBloqueo(fn) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try { return fn(); } finally { lock.releaseLock(); }
 }
 
 function normalizarCorreo(correo) {
