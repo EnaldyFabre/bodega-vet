@@ -1,7 +1,7 @@
 /**
  * ============================================================
  *  Bodega API — Servidor de la app Bodega Veterinaria
- *  Bloques 2 y 3: acceso, catálogo e ingresos
+ *  Bloques 2, 3 y 4: acceso, catálogo, ingresos, salidas y tutores
  *
  *  Se pega en: planilla "App Bodega - Base de datos" → Extensiones → Apps Script
  *  Reemplaza por completo al código de prueba.
@@ -31,6 +31,10 @@ function doPost(e) {
       case 'datos':            return responder(obtenerDatos(validarSesion(datos.token)));
       case 'guardarProducto':  return responder(conBloqueo(() => guardarProducto(validarSesion(datos.token), datos.producto)));
       case 'registrarIngreso': return responder(conBloqueo(() => registrarIngreso(validarSesion(datos.token), datos)));
+
+      // Bloque 4
+      case 'registrarSalida':  return responder(conBloqueo(() => registrarSalida(validarSesion(datos.token), datos)));
+      case 'guardarTutor':     return responder(conBloqueo(() => guardarTutor(validarSesion(datos.token), datos.tutor)));
       default:                return responder({ ok: false, error: 'Acción desconocida.' });
     }
   } catch (err) {
@@ -40,7 +44,7 @@ function doPost(e) {
 
 /** Si alguien abre la URL en el navegador, solo confirma que el servidor está vivo (sin datos). */
 function doGet() {
-  return responder({ ok: true, servicio: 'Bodega API', version: 'bloque 3.1' });
+  return responder({ ok: true, servicio: 'Bodega API', version: 'bloque 4' });
 }
 
 // ============================================================
@@ -175,7 +179,8 @@ function obtenerDatos(usuario) {
     productos: productos,
     lotes: lotes,
     stock: stock,
-    movimientos: movimientos.slice(-300), // los últimos 300, para fichas e historial
+    movimientos: movimientos.slice(-500), // los últimos 500, para fichas e historial
+    tutores: leerHoja('Tutores').filter((t) => t.id),
     actualizado: new Date().toISOString()
   };
 }
@@ -313,6 +318,99 @@ function registrarIngreso(usuario, d) {
   });
 
   return { ok: true, documento_id: documentoId, guardadas: nuevas.length };
+}
+
+// ============================================================
+//  SALIDAS Y TUTORES (Bloque 4)
+// ============================================================
+
+/** Registra una salida (descuenta del stock común) y, si corresponde, a quién se entregó. */
+function registrarSalida(usuario, d) {
+  const s = d.salida || {};
+  if (!s.id_mov) throw new Error('Falta el identificador del registro.');
+
+  // Evita duplicados si el teléfono reintenta.
+  const repetido = leerHoja('Movimientos').some((m) => m.id === s.id_mov);
+  if (repetido) return { ok: true, repetido: true };
+
+  const producto = leerHoja('Productos').find((p) => p.id === s.producto_id);
+  if (!producto) throw new Error('Producto no encontrado.');
+  const cantidad = Number(s.cantidad_unidades);
+  if (!(cantidad > 0)) throw new Error('La cantidad debe ser mayor a cero.');
+  if (s.especie && ['Perro', 'Gato'].indexOf(s.especie) < 0) throw new Error('Especie no válida.');
+
+  let tutorId = '';
+  if (s.tutor && s.tutor.rut) tutorId = guardarTutor(usuario, s.tutor).tutor.id;
+
+  agregarFila('Movimientos', {
+    id: s.id_mov,
+    fecha_hora: new Date(),
+    producto_id: producto.id,
+    lote_id: '',
+    tipo: 'salida',
+    cantidad_unidades: cantidad,
+    usuario: usuario.nombre,
+    tutor_id: tutorId,
+    especie: s.especie || '',
+    observacion: String(s.observacion || '').trim(),
+    id_dispositivo: String(d.id_dispositivo || '')
+  });
+
+  return { ok: true, tutor_id: tutorId };
+}
+
+/** Crea un tutor nuevo o actualiza sus datos (se busca por RUT). */
+function guardarTutor(usuario, t) {
+  t = t || {};
+  const rut = limpiarRut(t.rut);
+  if (!rutValido(rut)) throw new Error('El RUT ' + (t.rut || '') + ' no es válido.');
+  const nombre = String(t.nombre || '').trim();
+  if (!nombre) throw new Error('Falta el nombre del tutor.');
+
+  const datos = {
+    rut: formatearRut(rut),
+    nombre: nombre,
+    direccion: String(t.direccion || '').trim(),
+    telefono: String(t.telefono || '').trim()
+  };
+
+  const tutores = leerHoja('Tutores').filter((x) => x.id);
+  const existente = tutores.find((x) => limpiarRut(x.rut) === rut);
+  if (existente) {
+    actualizarFila('Tutores', existente.id, datos);
+    return { ok: true, tutor: Object.assign({}, existente, datos) };
+  }
+
+  datos.id = siguienteId(tutores, 'T', 5);
+  datos.fecha_registro = new Date();
+  datos.registrado_por = usuario.nombre;
+  agregarFila('Tutores', datos);
+  return { ok: true, tutor: datos };
+}
+
+/** "12.345.678-5" → "123456785" (sin puntos ni guion, K mayúscula) */
+function limpiarRut(rut) {
+  return String(rut || '').replace(/[^0-9kK]/g, '').toUpperCase();
+}
+
+/** Revisa el dígito verificador (módulo 11). */
+function rutValido(rut) {
+  if (!/^\d{7,8}[0-9K]$/.test(rut)) return false;
+  const cuerpo = rut.slice(0, -1);
+  let suma = 0, factor = 2;
+  for (let i = cuerpo.length - 1; i >= 0; i--) {
+    suma += Number(cuerpo[i]) * factor;
+    factor = factor === 7 ? 2 : factor + 1;
+  }
+  const resto = 11 - (suma % 11);
+  const dv = resto === 11 ? '0' : resto === 10 ? 'K' : String(resto);
+  return dv === rut.slice(-1);
+}
+
+/** "123456785" → "12.345.678-5" */
+function formatearRut(rut) {
+  const cuerpo = rut.slice(0, -1).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return cuerpo + '-' + rut.slice(-1);
 }
 
 // ============================================================

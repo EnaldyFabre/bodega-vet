@@ -5,7 +5,7 @@
  * IMPORTANTE: cada vez que publiquemos cambios, subir el número de VERSION.
  * Así los teléfonos descargan la versión nueva.
  */
-const VERSION = 'v3.1-bloque3';
+const VERSION = 'v4-bloque4';
 const CACHE = 'bodega-' + VERSION;
 
 // Archivos que forman la app (el "esqueleto" que se guarda en el teléfono)
@@ -20,6 +20,8 @@ const ARCHIVOS = [
   './js/datos.js',
   './js/productos.js',
   './js/ingreso.js',
+  './js/salida.js',
+  './js/tutores.js',
   './js/app.js',
   './manifest.webmanifest',
   './icons/icon-192.png',

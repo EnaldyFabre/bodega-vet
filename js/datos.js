@@ -1,5 +1,5 @@
 /* ============================================================
-   Datos — Bloque 3
+   Datos — Bloques 3 y 4
    Guarda en el teléfono una copia de los productos, el stock y los lotes,
    para poder mostrarlos aunque no haya señal. Se actualiza al conectarse.
    ============================================================ */
@@ -19,7 +19,7 @@ const Datos = (() => {
     const r = await llamarServidor('datos', { token: s.token });
     cache = {
       productos: r.productos, lotes: r.lotes, stock: r.stock,
-      movimientos: r.movimientos, actualizado: r.actualizado
+      movimientos: r.movimientos, tutores: r.tutores || [], actualizado: r.actualizado
     };
     localStorage.setItem(CLAVE, JSON.stringify(cache));
     return true;
@@ -46,6 +46,17 @@ const Datos = (() => {
     return ((cache && cache.movimientos) || []).filter((m) => m.producto_id === id).slice(-cuantos).reverse();
   }
   function actualizado() { return cache && cache.actualizado; }
+  function movimientos() { return ((cache && cache.movimientos) || []).slice().reverse(); }
+
+  // ---------- Tutores ----------
+  function tutores() {
+    return ((cache && cache.tutores) || []).slice().sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  }
+  function tutor(id) { return ((cache && cache.tutores) || []).find((t) => t.id === id) || null; }
+  function tutorPorRut(rut) {
+    const limpio = limpiarRut(rut);
+    return ((cache && cache.tutores) || []).find((t) => limpiarRut(t.rut) === limpio) || null;
+  }
 
   /** Sugerencias al escribir: primero los que empiezan con el texto, luego los que lo contienen. */
   function buscar(texto, max = 6) {
@@ -80,7 +91,7 @@ const Datos = (() => {
     return min > 0 && stock(p.id) < min;
   }
 
-  return { actualizar, hay, olvidar, productos, producto, stock, lotesDe, movimientosDe, actualizado, buscar, textoStock, faltanDatos, bajoMinimo };
+  return { actualizar, hay, olvidar, productos, producto, stock, lotesDe, movimientosDe, movimientos, actualizado, buscar, textoStock, faltanDatos, bajoMinimo, tutores, tutor, tutorPorRut };
 })();
 
 // ---------- Ayudantes generales ----------
@@ -111,4 +122,35 @@ function textoMes(valor) {
 function textoFecha(valor) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(valor || '');
   return m ? m[3] + '/' + m[2] + '/' + m[1] : (valor || '');
+}
+
+/* ---------- RUT ---------- */
+/** "12.345.678-5" → "123456785" */
+function limpiarRut(rut) { return String(rut || '').replace(/[^0-9kK]/g, '').toUpperCase(); }
+
+/** Revisa el dígito verificador del RUT (módulo 11). */
+function rutValido(rut) {
+  const r = limpiarRut(rut);
+  if (!/^\d{7,8}[0-9K]$/.test(r)) return false;
+  let suma = 0, factor = 2;
+  for (let i = r.length - 2; i >= 0; i--) {
+    suma += Number(r[i]) * factor;
+    factor = factor === 7 ? 2 : factor + 1;
+  }
+  const resto = 11 - (suma % 11);
+  const dv = resto === 11 ? '0' : resto === 10 ? 'K' : String(resto);
+  return dv === r.slice(-1);
+}
+
+/** "123456785" → "12.345.678-5" */
+function formatearRut(rut) {
+  const r = limpiarRut(rut);
+  if (r.length < 2) return r;
+  return r.slice(0, -1).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + '-' + r.slice(-1);
+}
+
+/** "2026-11-24T10:40" → "10:40" */
+function textoHora(valor) {
+  const m = /T(\d{2}:\d{2})/.exec(valor || '');
+  return m ? m[1] : '';
 }

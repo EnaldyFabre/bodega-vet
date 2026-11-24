@@ -6,7 +6,7 @@
    - Avisa cuando hay una versión nueva de la app
    ============================================================ */
 
-const VERSION_APP = '0.3.1 (bloque 3)';
+const VERSION_APP = '0.4 (bloque 4)';
 
 /* ---------- Inicio ---------- */
 PANTALLAS.inicio = {
@@ -54,11 +54,6 @@ PANTALLAS.inicio = {
   }
 };
 
-/* ---------- Pantallas de los próximos bloques ---------- */
-PANTALLAS.salida = () => enConstruccion('Registrar salida', 'inicio', 'Llega en el bloque 4.');
-PANTALLAS.tutores = () => enConstruccion('Tutores', 'tutores', 'Llega en el bloque 4.');
-PANTALLAS.historial = () => enConstruccion('Historial', 'historial', 'Llega en el bloque 4.');
-
 /* ---------- Navegación ---------- */
 // Ej.: "#producto/P001" → pantalla "producto" con detalle "P001"
 function pantallaActual() {
@@ -76,7 +71,7 @@ function mostrarPantalla() {
 }
 
 /* Pantallas que se pueden redibujar al llegar datos nuevos sin perder lo que se está escribiendo */
-const PANTALLAS_DE_LECTURA = ['inicio', 'productos', 'producto'];
+const PANTALLAS_DE_LECTURA = ['inicio', 'productos', 'producto', 'tutores', 'historial'];
 
 async function refrescarDatos() {
   try {
