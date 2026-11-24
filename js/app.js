@@ -1,12 +1,12 @@
 /* ============================================================
-   App Bodega Veterinaria — Bloque 1: estructura base
+   App Bodega Veterinaria — Bloques 1 y 2: estructura base y acceso
    - Dibuja las pantallas (por ahora, Inicio completo y el resto "en construcción")
    - Cambia de pantalla según la dirección (#inicio, #productos, etc.)
    - Muestra si hay señal y cuántos registros faltan por subir
    - Registra el "service worker" para que la app funcione sin señal
    ============================================================ */
 
-const VERSION_APP = '0.1 (bloque 1)';
+const VERSION_APP = '0.2 (bloque 2)';
 
 /* ---------- 1. Íconos (dibujos simples de líneas) ---------- */
 const ICONOS = {
@@ -75,7 +75,7 @@ function menuInferior(activo) {
 const PANTALLAS = {
   inicio() {
     return `
-      ${encabezado('Inicio')}
+      ${encabezado('Hola, ' + escapar((Acceso.usuario() || {}).nombre || ''))}
       <main class="contenido">
         <section class="tarjeta">
           <p class="titulo-seccion" style="margin:0 0 10px">Avisos</p>
@@ -98,6 +98,7 @@ const PANTALLAS = {
         <a href="#ingreso" class="accion">${icono('ingreso')} Registrar ingreso</a>
 
         <p class="pie-version">Versión ${VERSION_APP}</p>
+        <button class="boton-texto" id="cerrar-sesion" type="button">Cerrar sesión en este teléfono</button>
       </main>
       ${menuInferior('inicio')}`;
   },
@@ -128,6 +129,14 @@ function mostrarPantalla() {
   const pantalla = PANTALLAS[nombre] || PANTALLAS.inicio;
   document.getElementById('app').innerHTML = pantalla(detalle);
   window.scrollTo(0, 0);
+
+  const salir = document.getElementById('cerrar-sesion');
+  if (salir) salir.addEventListener('click', Acceso.cerrarSesion);
+}
+
+/* La llama acceso.js cuando la persona ya entró con su PIN. */
+function iniciarApp() {
+  mostrarPantalla();
 }
 
 // Actualiza solo la etiqueta de estado cuando se pierde o vuelve la señal
@@ -136,10 +145,13 @@ function actualizarEstado() {
   if (caja) caja.innerHTML = etiquetaEstado();
 }
 
-window.addEventListener('hashchange', mostrarPantalla);
+// Solo cambia de pantalla si la app está desbloqueada (si no, se queda en la pantalla del PIN).
+window.addEventListener('hashchange', () => { if (document.querySelector('.menu')) mostrarPantalla(); });
 window.addEventListener('online', actualizarEstado);
 window.addEventListener('offline', actualizarEstado);
-mostrarPantalla();
+
+// Al abrir la app, primero se revisa el acceso (correo/código/PIN).
+Acceso.comenzar();
 
 /* ---------- 6. Funcionamiento sin señal ---------- */
 // Registra el service worker (sw.js), que guarda la app en el teléfono.

@@ -112,3 +112,44 @@ a { color: inherit; text-decoration: none; }
 .en-construccion strong { display: block; color: var(--texto); font-size: 18px; margin-bottom: 6px; }
 
 .pie-version { text-align: center; font-size: 11px; color: var(--texto-suave); margin: 8px 0 0; }
+
+/* ============================================================
+   Bloque 2: pantallas de acceso (correo, código y PIN)
+   ============================================================ */
+.acceso {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  padding: calc(56px + env(safe-area-inset-top)) 28px 32px; text-align: center;
+}
+.logo-acceso {
+  width: 72px; height: 72px; border-radius: 20px; background: var(--azul); color: var(--blanco);
+  display: flex; align-items: center; justify-content: center; font-size: 36px; font-weight: 700;
+}
+.acceso h1 { margin: 16px 0 4px; font-size: 24px; }
+.sub-acceso { margin: 0; font-size: 15px; color: var(--texto-suave); max-width: 320px; line-height: 1.4; }
+.franja { display: flex; gap: 6px; margin: 14px 0 22px; }
+.franja span { width: 48px; height: 5px; border-radius: 3px; background: var(--amarillo); }
+.franja span + span { background: var(--azul); }
+
+.form-acceso { width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 10px; text-align: left; }
+.form-acceso label { font-size: 13px; font-weight: 600; color: var(--texto-suave); }
+.form-acceso input {
+  height: 52px; border: 1px solid #C9CEDB; border-radius: 12px; padding: 0 14px;
+  font-size: 17px; font-family: inherit; background: var(--blanco); color: var(--texto);
+}
+.form-acceso input:focus { outline: 2px solid var(--azul); border-color: var(--azul); }
+.campo-grande { text-align: center; font-size: 26px !important; letter-spacing: 10px; }
+
+.boton-principal {
+  height: 54px; border: none; border-radius: var(--radio); background: var(--azul); color: var(--blanco);
+  font-size: 17px; font-weight: 700; margin-top: 6px;
+}
+.boton-principal:disabled { opacity: 0.6; }
+.boton-texto {
+  background: transparent; border: none; color: var(--azul); font-size: 14px; font-weight: 600;
+  padding: 10px; min-height: 44px;
+}
+.ayuda { margin: 4px 0 0; font-size: 13px; color: var(--texto-suave); text-align: center; }
+.mensaje { margin: 16px 0 0; font-size: 14px; max-width: 340px; min-height: 20px; }
+.mensaje.error { color: var(--rojo-texto); }
+.mensaje.info { color: var(--amarillo-texto); }
+.oculto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
