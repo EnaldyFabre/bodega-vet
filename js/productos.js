@@ -91,11 +91,11 @@ PANTALLAS.producto = {
 
         <p class="titulo-seccion">Lotes recibidos (solo registro)</p>
         ${lotes.length ? lotes.map((l) => `
-          <div class="tarjeta lote">
+          <a href="${l.documento_id ? '#documento/' + l.documento_id : '#'}" class="tarjeta lote">
             <div class="fila-entre"><strong>${l.n_lote ? 'Lote ' + escapar(l.n_lote) : 'Lote sin número'}</strong><span>+${escapar(Datos.textoStock(p, Number(l.cantidad_unidades)).split(' · ')[0])}</span></div>
             <span class="detalle">${l.vencimiento ? 'Vence ' + escapar(textoMes(l.vencimiento)) : '<span class="texto-amarillo">Sin fecha de vencimiento</span>'}</span>
             <span class="detalle">${escapar(l.doc_tipo)}${l.doc_numero ? ' ' + escapar(l.doc_numero) : ''}${l.fecha_recepcion ? ' · recibido ' + escapar(textoFecha(l.fecha_recepcion)) : ''}${l.proveedor ? ' · ' + escapar(l.proveedor) : ''}</span>
-          </div>`).join('') : '<p class="vacio">Todavía no hay ingresos de este producto.</p>'}
+          </a>`).join('') : '<p class="vacio">Todavía no hay ingresos de este producto.</p>'}
 
         <p class="titulo-seccion">Últimos movimientos</p>
         ${movs.length ? `<div class="tarjeta">${movs.map((m) => `

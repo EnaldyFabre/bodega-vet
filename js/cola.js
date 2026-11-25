@@ -32,8 +32,8 @@ const Cola = (() => {
     if (!ACCIONES_EN_COLA.includes(accion)) throw new Error('Esta acción no se puede guardar sin señal.');
     if (navigator.onLine) {
       try {
-        await llamarServidor(accion, Object.assign({ token: Acceso.sesion().token }, datos));
-        return { enCola: false };
+        const resultado = await llamarServidor(accion, Object.assign({ token: Acceso.sesion().token }, datos));
+        return { enCola: false, resultado };
       } catch (e) {
         if (!esErrorDeConexion(e)) throw e; // error real (dato inválido): se muestra al usuario
       }

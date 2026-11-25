@@ -270,3 +270,22 @@ a.estado { text-decoration: none; }
 .etiqueta.amarilla { background: var(--amarillo-claro); color: var(--amarillo-texto); }
 .boton-borde.rojo { border-color: var(--rojo-texto); color: var(--rojo-texto); }
 .tarjeta.linea .boton-borde, .tarjeta.linea .dos-botones { margin-top: 8px; }
+
+/* ============================================================
+   Versión 2: documentos, adjuntos y exportación
+   ============================================================ */
+.oculto { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+label.boton-borde { cursor: pointer; text-align: center; }
+.adjunto { padding: 10px 14px; margin-bottom: 8px; }
+.adjunto strong { display: block; font-size: 14px; overflow-wrap: anywhere; }
+.acciones-adjunto { display: flex; flex-shrink: 0; }
+.visor {
+  position: fixed; inset: 0; z-index: 40; background: rgba(10, 14, 30, 0.94);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  padding: calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+}
+.visor img { max-width: 100%; max-height: 75vh; border-radius: 8px; background: var(--blanco); }
+.visor-texto { color: var(--blanco); text-align: center; font-size: 16px; line-height: 1.5; }
+.visor-botones { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; max-width: 420px; }
+.lista-simple { margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6; }
+a.tarjeta { color: var(--texto); }

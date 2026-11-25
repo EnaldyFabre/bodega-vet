@@ -10,6 +10,7 @@ const TIPOS_DOCUMENTO = ['Factura', 'Boleta', 'Sin documento', 'Inventario inici
 const Ingreso = (() => {
   const CLAVE = 'borradorIngreso';
   let e = cargar();
+  let archivos = []; // fotos o PDF elegidos para adjuntar (solo en memoria, no en el borrador)
 
   function hoy() {
     const d = new Date();
@@ -56,6 +57,13 @@ const Ingreso = (() => {
       <p class="titulo-seccion">Productos de este ingreso (${e.lineas.length})</p>
       ${e.lineas.map(filaLinea).join('')}
       ${seccionEditor()}
+      ${esInventario() ? '' : `
+      <section class="tarjeta formulario">
+        <p class="titulo-seccion" style="margin:0">Adjuntar ${e.tipo === 'Sin documento' ? 'documento' : e.tipo.toLowerCase()} (opcional)</p>
+        ${archivos.length ? archivos.map((a, i) => `<div class="fila-entre"><span class="detalle">📎 ${escapar(a.name || 'foto')}</span><button type="button" class="boton-texto" data-quitar-archivo="${i}">Quitar</button></div>`).join('') : ''}
+        ${botonesAdjuntar('ingreso')}
+        <p class="ayuda izquierda">Se sube junto con el ingreso (necesita señal). También puedes agregarlo después desde Documentos.</p>
+      </section>`}
       <p id="mensaje-ingreso" class="mensaje error" role="alert"></p>
       <button type="button" class="boton-principal" id="guardar-ingreso" ${e.lineas.length ? '' : 'disabled'}>
         Guardar ingreso${e.lineas.length ? ' (' + e.lineas.length + ' producto' + (e.lineas.length > 1 ? 's' : '') + ')' : ''}
@@ -189,6 +197,12 @@ const Ingreso = (() => {
     const cancelar = document.getElementById('cancelar-crear');
     if (cancelar) cancelar.addEventListener('click', () => { e.editor.creando = false; guardarBorrador(); dibujar(); });
 
+    document.querySelectorAll('[data-adjuntar]').forEach((input) => input.addEventListener('change', () => {
+      archivos = archivos.concat(Array.from(input.files)); dibujar();
+    }));
+    document.querySelectorAll('[data-quitar-archivo]').forEach((b) => b.addEventListener('click', () => {
+      archivos.splice(Number(b.dataset.quitarArchivo), 1); dibujar();
+    }));
     document.getElementById('guardar-ingreso').addEventListener('click', guardarIngreso);
     const descartar = document.getElementById('descartar');
     if (descartar) descartar.addEventListener('click', () => {
@@ -269,7 +283,19 @@ const Ingreso = (() => {
         }))
       }, 'Ingreso (' + e.tipo + (e.n_documento ? ' ' + e.n_documento : '') + '): ' + lineas + ' producto' + (lineas > 1 ? 's' : ''));
       borrarBorrador();
+      // Adjuntos: se suben al documento recién creado (si se guardó con señal).
+      let fallaron = 0;
+      if (archivos.length && !r.enCola && r.resultado && r.resultado.documento_id) {
+        boton.textContent = 'Subiendo adjuntos…';
+        for (const a of archivos) {
+          try { await Adjuntos.subir(r.resultado.documento_id, a); } catch (x) { fallaron++; }
+        }
+      } else if (archivos.length) {
+        fallaron = archivos.length;
+      }
+      archivos = [];
       if (!r.enCola) await Datos.actualizar().catch(() => {});
+      if (fallaron) setTimeout(() => aviso(fallaron + ' adjunto(s) no se subieron. Agrégalos desde Inicio → Documentos de compra.', 'error'), 3600);
       aviso(r.enCola ? 'Sin señal: ingreso guardado en el teléfono. Se subirá solo.' : 'Ingreso guardado (' + lineas + ' producto' + (lineas > 1 ? 's' : '') + ')');
       location.hash = '#inicio';
     } catch (x) {

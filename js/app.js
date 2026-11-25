@@ -6,7 +6,7 @@
    - Avisa cuando hay una versión nueva de la app
    ============================================================ */
 
-const VERSION_APP = '1.0 (versión 1)';
+const VERSION_APP = '2.0 (versión 2)';
 
 /* ---------- Inicio ---------- */
 PANTALLAS.inicio = {
@@ -56,6 +56,12 @@ PANTALLAS.inicio = {
         <a href="#salida" class="accion">${icono('salida')} Registrar salida</a>
         <a href="#ingreso" class="accion">${icono('ingreso')} Registrar ingreso${localStorage.getItem('borradorIngreso') ? ' <span class="etiqueta gris">borrador</span>' : ''}</a>
 
+        <p class="titulo-seccion">Más</p>
+        <div class="dos-botones">
+          <a href="#documentos" class="boton-borde">Documentos de compra</a>
+          <a href="#exportar" class="boton-borde">Exportar a Excel</a>
+        </div>
+
         <p class="pie-version">Versión ${VERSION_APP}${Datos.actualizado() ? ' · datos al ' + escapar(textoFecha(Datos.actualizado())) : ''}</p>
         <button class="boton-texto centrado" id="cerrar-sesion" type="button">Cerrar sesión en este teléfono</button>
       </main>
@@ -83,7 +89,7 @@ function mostrarPantalla() {
 }
 
 /* Pantallas que se pueden redibujar al llegar datos nuevos sin perder lo que se está escribiendo */
-const PANTALLAS_DE_LECTURA = ['inicio', 'productos', 'producto', 'tutores', 'historial', 'alertas', 'pendientes'];
+const PANTALLAS_DE_LECTURA = ['inicio', 'productos', 'producto', 'tutores', 'historial', 'alertas', 'pendientes', 'documentos'];
 
 async function refrescarDatos() {
   try {

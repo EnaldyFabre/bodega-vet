@@ -1,7 +1,8 @@
 /**
  * ============================================================
  *  Bodega API — Servidor de la app Bodega Veterinaria
- *  Versión 1: acceso, catálogo, ingresos, salidas, tutores, lotes y alertas
+ *  Versión 2: acceso, catálogo, ingresos, salidas, tutores, lotes, alertas,
+ *  adjuntos y exportación a Excel
  *
  *  Se pega en: planilla "App Bodega - Base de datos" → Extensiones → Apps Script
  *  Reemplaza por completo al código de prueba.
@@ -13,6 +14,8 @@ const MINUTOS_CODIGO = 10;        // cuánto dura un código enviado por correo
 const MAX_INTENTOS_CODIGO = 5;    // intentos para escribir bien el código
 const SEGUNDOS_ENTRE_CODIGOS = 60; // espera mínima para pedir otro código
 const DIAS_SESION = 180;          // cuánto dura una sesión en un teléfono
+const ID_CARPETA_ADJUNTOS = '1idykcwdbH6SmjpF1Nd8vP68C9NrOBcMH'; // carpeta "Adjuntos" en el Drive de Matías
+const MAX_MB_ADJUNTO = 10;
 
 /**
  * Entrada principal: la app envía {accion: "...", ...datos} y aquí se decide qué hacer.
@@ -38,6 +41,13 @@ function doPost(e) {
 
       // Bloque 5
       case 'actualizarLote':   return responder(conBloqueo(() => actualizarLote(validarSesion(datos.token), datos.lote)));
+
+      // Versión 2
+      case 'subirAdjunto':     return responder(conBloqueo(() => subirAdjunto(validarSesion(datos.token), datos)));
+      case 'adjuntos':         return responder(listarAdjuntos(validarSesion(datos.token), datos.documento_id));
+      case 'verAdjunto':       return responder(verAdjunto(validarSesion(datos.token), datos.documento_id, datos.archivo_id));
+      case 'borrarAdjunto':    return responder(conBloqueo(() => borrarAdjunto(validarSesion(datos.token), datos.documento_id, datos.archivo_id)));
+      case 'exportar':         return responder(exportarExcel(validarSesion(datos.token), datos));
       default:                return responder({ ok: false, error: 'Acción desconocida.' });
     }
   } catch (err) {
@@ -47,7 +57,7 @@ function doPost(e) {
 
 /** Si alguien abre la URL en el navegador, solo confirma que el servidor está vivo (sin datos). */
 function doGet() {
-  return responder({ ok: true, servicio: 'Bodega API', version: 'version 1' });
+  return responder({ ok: true, servicio: 'Bodega API', version: 'version 2' });
 }
 
 // ============================================================
@@ -184,6 +194,7 @@ function obtenerDatos(usuario) {
     stock: stock,
     movimientos: movimientos.slice(-500), // los últimos 500, para fichas e historial
     tutores: leerHoja('Tutores').filter((t) => t.id),
+    documentos: Object.keys(documentos).map((k) => documentos[k]).filter((d) => d.id),
     actualizado: new Date().toISOString()
   };
 }
@@ -437,6 +448,153 @@ function rutValido(rut) {
 function formatearRut(rut) {
   const cuerpo = rut.slice(0, -1).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   return cuerpo + '-' + rut.slice(-1);
+}
+
+// ============================================================
+//  ADJUNTOS (Versión 2)
+//  Cada documento (factura, boleta…) tiene su propia subcarpeta dentro de "Adjuntos".
+//  Los archivos quedan privados en el Drive de Matías: la app los muestra a través del servidor.
+// ============================================================
+
+function carpetaDeDocumento(documentoId, crear) {
+  const doc = leerHoja('Documentos').find((d) => d.id === documentoId);
+  if (!doc) throw new Error('No se encontró el documento.');
+  if (doc.carpeta_adjuntos) {
+    try { return DriveApp.getFolderById(doc.carpeta_adjuntos); } catch (e) { /* se borró: se crea otra */ }
+  }
+  if (!crear) return null;
+  const nombre = documentoId + ' - ' + doc.tipo + (doc.n_documento ? ' ' + doc.n_documento : '') + (doc.proveedor ? ' - ' + doc.proveedor : '');
+  const carpeta = DriveApp.getFolderById(ID_CARPETA_ADJUNTOS).createFolder(nombre);
+  actualizarFila('Documentos', documentoId, { carpeta_adjuntos: carpeta.getId() });
+  return carpeta;
+}
+
+function subirAdjunto(usuario, d) {
+  const tipos = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+  if (tipos.indexOf(d.tipo_mime) < 0) throw new Error('Solo se aceptan fotos (JPG, PNG) o PDF.');
+  const bytes = Utilities.base64Decode(d.base64 || '');
+  if (!bytes.length) throw new Error('El archivo está vacío.');
+  if (bytes.length > MAX_MB_ADJUNTO * 1024 * 1024) throw new Error('El archivo supera ' + MAX_MB_ADJUNTO + ' MB.');
+
+  const carpeta = carpetaDeDocumento(d.documento_id, true);
+  const limpio = String(d.nombre || 'adjunto').replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
+  const archivo = carpeta.createFile(Utilities.newBlob(bytes, d.tipo_mime, limpio));
+  archivo.setDescription('Subido por ' + usuario.nombre + ' desde la app Bodega');
+  return { ok: true, archivo: { id: archivo.getId(), nombre: archivo.getName() } };
+}
+
+function listarAdjuntos(usuario, documentoId) {
+  const carpeta = carpetaDeDocumento(documentoId, false);
+  const lista = [];
+  if (carpeta) {
+    const it = carpeta.getFiles();
+    while (it.hasNext()) {
+      const f = it.next();
+      if (f.isTrashed()) continue;
+      lista.push({
+        id: f.getId(), nombre: f.getName(), tipo_mime: f.getMimeType(),
+        kb: Math.round(f.getSize() / 1024),
+        fecha: Utilities.formatDate(f.getDateCreated(), 'America/Santiago', "yyyy-MM-dd'T'HH:mm")
+      });
+    }
+  }
+  lista.sort((a, b) => a.fecha.localeCompare(b.fecha));
+  return { ok: true, adjuntos: lista };
+}
+
+/** Solo entrega archivos que estén dentro de la carpeta del documento indicado. */
+function archivoDelDocumento(documentoId, archivoId) {
+  const carpeta = carpetaDeDocumento(documentoId, false);
+  if (!carpeta) throw new Error('Este documento no tiene adjuntos.');
+  const archivo = DriveApp.getFileById(archivoId);
+  const padres = archivo.getParents();
+  while (padres.hasNext()) {
+    if (padres.next().getId() === carpeta.getId()) return archivo;
+  }
+  throw new Error('El archivo no pertenece a este documento.');
+}
+
+function verAdjunto(usuario, documentoId, archivoId) {
+  const archivo = archivoDelDocumento(documentoId, archivoId);
+  return {
+    ok: true, nombre: archivo.getName(), tipo_mime: archivo.getMimeType(),
+    base64: Utilities.base64Encode(archivo.getBlob().getBytes())
+  };
+}
+
+function borrarAdjunto(usuario, documentoId, archivoId) {
+  archivoDelDocumento(documentoId, archivoId).setTrashed(true); // queda 30 días en la papelera de Drive
+  return { ok: true };
+}
+
+// ============================================================
+//  EXPORTAR A EXCEL (Versión 2)
+//  Arma una planilla temporal con el inventario, la convierte a .xlsx y la borra.
+// ============================================================
+
+function exportarExcel(usuario, d) {
+  const info = obtenerDatos(usuario);
+  const productos = {};
+  info.productos.forEach((p) => { productos[p.id] = p; });
+  const tutores = {};
+  info.tutores.forEach((t) => { tutores[t.id] = t; });
+  const conTutores = d.incluir_tutores === true;
+
+  // Hoja 1: inventario (stock actual)
+  const inventario = [['Tipo', 'Categoría', 'Producto', 'Presentación', 'Se cuenta en', 'Trae c/u', 'Stock (unidades)', 'Stock (presentaciones)', 'Stock mínimo', 'Bajo mínimo']];
+  info.productos.filter((p) => p.activo !== 'no').forEach((p) => {
+    const stock = info.stock[p.id] || 0;
+    const upp = Number(p.unidades_por_presentacion) || 0;
+    const min = Number(p.stock_minimo);
+    inventario.push([p.tipo, p.categoria, p.nombre, p.presentacion, p.unidad_minima, upp || '',
+      stock, upp ? Math.round((stock / upp) * 100) / 100 : '', p.stock_minimo, min > 0 && stock < min ? 'Sí' : '']);
+  });
+
+  // Hoja 2: lotes recibidos
+  const lotes = [['Producto', 'N° de lote', 'Vencimiento', 'Cantidad (presentaciones)', 'Cantidad (unidades)', 'Documento', 'N° documento', 'Fecha llegada', 'Proveedor', 'Aviso revisado']];
+  info.lotes.forEach((l) => {
+    const p = productos[l.producto_id] || {};
+    lotes.push([p.nombre || l.producto_id, l.n_lote, l.vencimiento, l.cantidad_presentaciones, l.cantidad_unidades,
+      l.doc_tipo, l.doc_numero, l.fecha_recepcion, l.proveedor, l.alerta_revisada]);
+  });
+
+  // Hoja 3: historial completo de movimientos
+  const titulosMov = ['Fecha y hora', 'Tipo', 'Producto', 'Cantidad (unidades)', 'Se cuenta en', 'Usuario', 'Especie', 'Observación'];
+  if (conTutores) titulosMov.push('Tutor', 'RUT', 'Teléfono', 'Dirección');
+  const movimientos = [titulosMov];
+  leerHoja('Movimientos').filter((m) => m.id).forEach((m) => {
+    const p = productos[m.producto_id] || {};
+    const fila = [m.fecha_hora, m.tipo, p.nombre || m.producto_id, Number(m.cantidad_unidades) || 0, p.unidad_minima, m.usuario, m.especie, m.observacion];
+    if (conTutores) {
+      const t = tutores[m.tutor_id] || {};
+      fila.push(t.nombre || '', t.rut || '', t.telefono || '', t.direccion || '');
+    }
+    movimientos.push(fila);
+  });
+
+  const fecha = Utilities.formatDate(new Date(), 'America/Santiago', 'yyyy-MM-dd');
+  const temporal = SpreadsheetApp.create('Exportación Bodega ' + fecha);
+  try {
+    const hojas = [['Inventario', inventario], ['Lotes', lotes], ['Movimientos', movimientos]];
+    hojas.forEach(([nombre, filas], i) => {
+      const hoja = i === 0 ? temporal.getSheets()[0].setName(nombre) : temporal.insertSheet(nombre);
+      hoja.getRange(1, 1, filas.length, filas[0].length).setValues(filas);
+      hoja.getRange(1, 1, 1, filas[0].length).setFontWeight('bold').setBackground('#1D35C9').setFontColor('#FFFFFF');
+      hoja.setFrozenRows(1);
+      hoja.autoResizeColumns(1, filas[0].length);
+    });
+    SpreadsheetApp.flush();
+
+    const url = 'https://docs.google.com/spreadsheets/d/' + temporal.getId() + '/export?format=xlsx';
+    const respuesta = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() } });
+    return {
+      ok: true,
+      nombre: 'Bodega ' + fecha + (conTutores ? ' (con tutores)' : '') + '.xlsx',
+      base64: Utilities.base64Encode(respuesta.getBlob().getBytes())
+    };
+  } finally {
+    DriveApp.getFileById(temporal.getId()).setTrashed(true);
+  }
 }
 
 // ============================================================

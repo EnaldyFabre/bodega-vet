@@ -19,7 +19,7 @@ const Datos = (() => {
     const r = await llamarServidor('datos', { token: s.token });
     cache = {
       productos: r.productos, lotes: r.lotes, stock: r.stock,
-      movimientos: r.movimientos, tutores: r.tutores || [], actualizado: r.actualizado
+      movimientos: r.movimientos, tutores: r.tutores || [], documentos: r.documentos || [], actualizado: r.actualizado
     };
     // Lo que todavía está en la cola (sin subir) se vuelve a reflejar encima de los datos nuevos.
     leerCola().forEach((x) => aplicarLocal(x.accion, x.datos, false));
@@ -104,6 +104,10 @@ const Datos = (() => {
   }
   function actualizado() { return cache && cache.actualizado; }
   function lotes() { return (cache && cache.lotes) || []; }
+  function documentos() {
+    return ((cache && cache.documentos) || []).slice().sort((a, b) => String(b.id).localeCompare(String(a.id)));
+  }
+  function documento(id) { return ((cache && cache.documentos) || []).find((d) => d.id === id) || null; }
   function movimientos() { return ((cache && cache.movimientos) || []).slice().reverse(); }
 
   // ---------- Tutores ----------
@@ -149,7 +153,7 @@ const Datos = (() => {
     return min > 0 && stock(p.id) < min;
   }
 
-  return { actualizar, aplicarLocal, lotes, hay, olvidar, productos, producto, stock, lotesDe, movimientosDe, movimientos, actualizado, buscar, textoStock, faltanDatos, bajoMinimo, tutores, tutor, tutorPorRut };
+  return { actualizar, aplicarLocal, lotes, documentos, documento, hay, olvidar, productos, producto, stock, lotesDe, movimientosDe, movimientos, actualizado, buscar, textoStock, faltanDatos, bajoMinimo, tutores, tutor, tutorPorRut };
 })();
 
 // ---------- Ayudantes generales ----------
