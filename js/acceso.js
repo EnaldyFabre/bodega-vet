@@ -23,7 +23,7 @@ const Acceso = (() => {
 
   function olvidarTelefono() {
     // Borra la sesión y la copia de datos de este teléfono.
-    ['sesion', 'pinHash', 'intentosPin', 'datos', 'borradorIngreso'].forEach((c) => localStorage.removeItem(c));
+    ['sesion', 'pinHash', 'intentosPin', 'datos', 'borradorIngreso', 'borradorAdjuntos', 'borradorSalida', 'ultimaPantalla'].forEach((c) => localStorage.removeItem(c));
     sessionStorage.removeItem('desbloqueado');
   }
 

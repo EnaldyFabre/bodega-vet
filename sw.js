@@ -5,7 +5,7 @@
  * IMPORTANTE: cada vez que publiquemos cambios, subir el número de VERSION.
  * Así los teléfonos descargan la versión nueva.
  */
-const VERSION = 'v6-version2';
+const VERSION = 'v6.1-version2';
 const CACHE = 'bodega-' + VERSION;
 
 // Archivos que forman la app (el "esqueleto" que se guarda en el teléfono)

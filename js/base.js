@@ -76,6 +76,16 @@ function enConstruccion(titulo, menuActivo, mensaje) {
     ${menuInferior(menuActivo)}`;
 }
 
+/** Mensaje importante que queda en pantalla hasta que la persona lo cierra. */
+function alertaFija(texto) {
+  const caja = document.createElement('div');
+  caja.className = 'alerta-fija';
+  caja.setAttribute('role', 'alert');
+  caja.innerHTML = `<p>${escapar(texto)}</p><button type="button" class="boton-principal">Entendido</button>`;
+  caja.querySelector('button').addEventListener('click', () => caja.remove());
+  document.body.appendChild(caja);
+}
+
 /** Muestra un mensaje breve abajo de la pantalla (ej.: "Ingreso guardado"). */
 function aviso(texto, tipo = 'ok') {
   let caja = document.getElementById('aviso-flotante');

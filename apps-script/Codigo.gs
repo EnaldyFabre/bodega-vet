@@ -14,7 +14,8 @@ const MINUTOS_CODIGO = 10;        // cuánto dura un código enviado por correo
 const MAX_INTENTOS_CODIGO = 5;    // intentos para escribir bien el código
 const SEGUNDOS_ENTRE_CODIGOS = 60; // espera mínima para pedir otro código
 const DIAS_SESION = 180;          // cuánto dura una sesión en un teléfono
-const ID_CARPETA_ADJUNTOS = '1idykcwdbH6SmjpF1Nd8vP68C9NrOBcMH'; // carpeta "Adjuntos" en el Drive de Matías
+const ID_CARPETA_ADJUNTOS = '1idykcwdbH6SmjpF1Nd8vP68C9NrOBcMH';     // "2. Adjuntos" en el Drive de Matías
+const ID_CARPETA_EXPORTACIONES = '1rPv1Q6Dmi9h5dUzWoHuSRa4jn3RJlYul'; // "3. Exportaciones Excel"
 const MAX_MB_ADJUNTO = 10;
 
 /**
@@ -57,7 +58,7 @@ function doPost(e) {
 
 /** Si alguien abre la URL en el navegador, solo confirma que el servidor está vivo (sin datos). */
 function doGet() {
-  return responder({ ok: true, servicio: 'Bodega API', version: 'version 2' });
+  return responder({ ok: true, servicio: 'Bodega API', version: 'version 2.1' });
 }
 
 // ============================================================
@@ -587,11 +588,19 @@ function exportarExcel(usuario, d) {
 
     const url = 'https://docs.google.com/spreadsheets/d/' + temporal.getId() + '/export?format=xlsx';
     const respuesta = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() } });
-    return {
-      ok: true,
-      nombre: 'Bodega ' + fecha + (conTutores ? ' (con tutores)' : '') + '.xlsx',
-      base64: Utilities.base64Encode(respuesta.getBlob().getBytes())
-    };
+    const hora = Utilities.formatDate(new Date(), 'America/Santiago', 'HH.mm');
+    const nombre = 'Bodega ' + fecha + ' ' + hora + (conTutores ? ' (con tutores)' : '') + '.xlsx';
+    const archivo = respuesta.getBlob().setName(nombre);
+
+    // Copia automática en Drive, carpeta "3. Exportaciones Excel" (sirve de respaldo).
+    let guardado = false;
+    try {
+      DriveApp.getFolderById(ID_CARPETA_EXPORTACIONES).createFile(archivo)
+        .setDescription('Generado por ' + usuario.nombre + ' desde la app Bodega');
+      guardado = true;
+    } catch (e) { /* si falla la copia, igual se entrega el archivo */ }
+
+    return { ok: true, nombre: nombre, guardado: guardado, base64: Utilities.base64Encode(archivo.getBytes()) };
   } finally {
     DriveApp.getFileById(temporal.getId()).setTrashed(true);
   }
@@ -706,4 +715,21 @@ function hash(texto) {
 function responder(datos) {
   return ContentService.createTextOutput(JSON.stringify(datos))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * Ejecutar a mano desde el editor (elegir "autorizar" → ▷ Ejecutar) para dar o revisar
+ * los permisos del servidor: correo, Drive y conexión externa (Excel).
+ * Si todo está bien, el registro de ejecución muestra "Permisos OK".
+ */
+function autorizar() {
+  MailApp.getRemainingDailyQuota();
+  DriveApp.getFolderById(ID_CARPETA_ADJUNTOS).getName();
+  // Crear y borrar un archivo de prueba: así Google pide el permiso completo de Drive
+  // (ver, crear y eliminar), que necesitan los adjuntos y el Excel.
+  DriveApp.getFolderById(ID_CARPETA_EXPORTACIONES).createFile('prueba-permisos.txt', 'ok').setTrashed(true);
+  SpreadsheetApp.getActive().getName();
+  ScriptApp.getOAuthToken();
+  UrlFetchApp.fetch('https://www.google.com', { muteHttpExceptions: true });
+  Logger.log('Permisos OK');
 }

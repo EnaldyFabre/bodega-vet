@@ -5,7 +5,12 @@
    ============================================================ */
 
 const Salida = (() => {
-  let e = nuevo();
+  const CLAVE = 'borradorSalida';
+  let e = cargar();
+  function cargar() {
+    try { return JSON.parse(localStorage.getItem(CLAVE)) || nuevo(); } catch (x) { return nuevo(); }
+  }
+  function guardar_() { localStorage.setItem(CLAVE, JSON.stringify(e)); }
 
   function nuevo(productoId = null) {
     return {
@@ -24,6 +29,7 @@ const Salida = (() => {
   }
 
   function dibujar() {
+    guardar_();
     const caja = document.getElementById('salida');
     if (!caja) return;
     const p = e.producto_id ? Datos.producto(e.producto_id) : null;
@@ -127,7 +133,7 @@ const Salida = (() => {
 
     document.querySelectorAll('[data-modo]').forEach((b) => b.addEventListener('click', () => { e.modo = b.dataset.modo; e.confirmarStock = false; dibujar(); }));
     document.querySelectorAll('[data-campo]').forEach((c) => c.addEventListener('input', () => {
-      e[c.dataset.campo] = c.value;
+      e[c.dataset.campo] = c.value; guardar_();
       if (c.dataset.campo === 'cant') { e.confirmarStock = false; mostrarEquivalencia(); }
     }));
     document.querySelectorAll('[data-sumar]').forEach((b) => b.addEventListener('click', () => {
@@ -200,7 +206,7 @@ const Salida = (() => {
         }
       }, 'Salida: ' + p.nombre + ' (' + Datos.textoStock(p, total).split(' · ')[0] + ')');
       const id = p.id;
-      e = nuevo();
+      e = nuevo(); localStorage.removeItem(CLAVE);
       if (!r.enCola) await Datos.actualizar().catch(() => {});
       aviso(r.enCola ? 'Sin señal: salida guardada en el teléfono. Se subirá sola.' : 'Salida registrada');
       location.hash = '#producto/' + id;

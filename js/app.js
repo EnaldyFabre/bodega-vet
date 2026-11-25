@@ -6,7 +6,7 @@
    - Avisa cuando hay una versión nueva de la app
    ============================================================ */
 
-const VERSION_APP = '2.0 (versión 2)';
+const VERSION_APP = '2.1 (versión 2)';
 
 /* ---------- Inicio ---------- */
 PANTALLAS.inicio = {
@@ -108,6 +108,15 @@ async function refrescarDatos() {
 
 /* La llama acceso.js cuando la persona ya entró con su PIN. */
 function iniciarApp() {
+  // Si Android cerró la app (por ejemplo, al abrir la cámara), vuelve a la pantalla en que estaba.
+  if (!location.hash) {
+    try {
+      const u = JSON.parse(localStorage.getItem('ultimaPantalla') || 'null');
+      if (u && Date.now() - u.t < 30 * 60 * 1000 && /^#(ingreso|salida|documento)/.test(u.hash)) {
+        history.replaceState(null, '', u.hash);
+      }
+    } catch (e) { /* sin problema */ }
+  }
   mostrarPantalla();
   // Primero sube lo pendiente (si hay señal) y luego trae los datos al día.
   Cola.sincronizar().finally(refrescarDatos);
@@ -119,7 +128,10 @@ function actualizarEstado() {
 }
 
 // Solo cambia de pantalla si la app está desbloqueada (si no, se queda en la pantalla del PIN).
-window.addEventListener('hashchange', () => { if (document.querySelector('.encabezado')) mostrarPantalla(); });
+window.addEventListener('hashchange', () => {
+  localStorage.setItem('ultimaPantalla', JSON.stringify({ hash: location.hash, t: Date.now() }));
+  if (document.querySelector('.encabezado')) mostrarPantalla();
+});
 window.addEventListener('online', () => { actualizarEstado(); if (Acceso.sesion()) Cola.sincronizar().finally(refrescarDatos); });
 window.addEventListener('offline', actualizarEstado);
 

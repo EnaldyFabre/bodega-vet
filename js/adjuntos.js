@@ -39,10 +39,12 @@ const Adjuntos = (() => {
     });
   }
 
-  /** Prepara y sube un archivo (foto o PDF) al documento indicado. */
-  async function subir(documentoId, archivo) {
-    if (!navigator.onLine) throw new Error('Subir adjuntos necesita señal.');
-    let blob = archivo, tipo = archivo.type, nombre = archivo.name || 'adjunto';
+  /**
+   * Deja un archivo listo para subir: las fotos se achican y todo queda como texto (base64).
+   * Así se puede guardar en el teléfono y no se pierde si la app se cierra al usar la cámara.
+   */
+  async function preparar(archivo) {
+    let blob = archivo, tipo = archivo.type, nombre = archivo.name || 'foto';
     if (tipo.startsWith('image/')) {
       blob = await achicarFoto(archivo);
       tipo = 'image/jpeg';
@@ -51,9 +53,16 @@ const Adjuntos = (() => {
       throw new Error('Solo se aceptan fotos o PDF.');
     }
     if (blob.size > MAX_MB * 1024 * 1024) throw new Error('El archivo supera ' + MAX_MB + ' MB.');
+    return { nombre, tipo, base64: await leerComoBase64(blob), kb: Math.round(blob.size / 1024) };
+  }
+
+  /** Sube un archivo (foto o PDF, o uno ya preparado) al documento indicado. */
+  async function subir(documentoId, archivo) {
+    if (!navigator.onLine) throw new Error('Subir adjuntos necesita señal.');
+    const listo = archivo.base64 ? archivo : await preparar(archivo);
     return llamarServidor('subirAdjunto', {
       token: Acceso.sesion().token, documento_id: documentoId,
-      nombre, tipo_mime: tipo, base64: await leerComoBase64(blob)
+      nombre: listo.nombre, tipo_mime: listo.tipo, base64: listo.base64
     });
   }
 
@@ -104,7 +113,7 @@ const Adjuntos = (() => {
     }
   }
 
-  return { subir, ver, entregar, aArchivo };
+  return { preparar, subir, ver, entregar, aArchivo };
 })();
 
 /** Botones para tomar una foto o elegir un archivo. */
@@ -237,7 +246,7 @@ PANTALLAS.exportar = {
           <button type="button" class="boton-borde oculto-total" id="guardar-excel">Guardar / compartir el Excel</button>
           <p id="mensaje-exportar" class="mensaje error" role="alert"></p>
         </section>
-        <p class="ayuda">Sirve también como respaldo: conviene exportarlo una vez al mes.</p>
+        <p class="ayuda">Cada Excel generado queda también guardado en el Drive de Matías (carpeta "3. Exportaciones Excel"). Conviene generarlo una vez al mes como respaldo.</p>
       </main>
       ${menuInferior('inicio')}`;
   },
@@ -252,7 +261,7 @@ PANTALLAS.exportar = {
         guardar.textContent = 'Guardar / compartir: ' + r.nombre;
         guardar.classList.remove('oculto-total');
         guardar.onclick = () => Adjuntos.entregar(archivo);
-        aviso('Excel listo. Toca el botón para guardarlo o compartirlo.');
+        aviso(r.guardado ? 'Excel listo y copia guardada en Drive (Exportaciones Excel).' : 'Excel listo. Toca el botón para guardarlo o compartirlo.');
       } catch (e) {
         document.getElementById('mensaje-exportar').textContent = e.message;
       } finally {

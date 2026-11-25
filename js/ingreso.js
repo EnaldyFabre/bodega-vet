@@ -10,7 +10,16 @@ const TIPOS_DOCUMENTO = ['Factura', 'Boleta', 'Sin documento', 'Inventario inici
 const Ingreso = (() => {
   const CLAVE = 'borradorIngreso';
   let e = cargar();
-  let archivos = []; // fotos o PDF elegidos para adjuntar (solo en memoria, no en el borrador)
+  // Fotos o PDF elegidos para adjuntar. Se guardan en el teléfono (ya achicados) para que
+  // no se pierdan si Android cierra la app mientras se usa la cámara.
+  const CLAVE_ADJ = 'borradorAdjuntos';
+  let archivos = leerAdjuntos();
+  function leerAdjuntos() {
+    try { return JSON.parse(localStorage.getItem(CLAVE_ADJ)) || []; } catch (x) { return []; }
+  }
+  function guardarAdjuntos() {
+    try { localStorage.setItem(CLAVE_ADJ, JSON.stringify(archivos)); return true; } catch (x) { return false; }
+  }
 
   function hoy() {
     const d = new Date();
@@ -26,7 +35,7 @@ const Ingreso = (() => {
     try { return JSON.parse(localStorage.getItem(CLAVE)) || vacio(); } catch (x) { return vacio(); }
   }
   function guardarBorrador() { localStorage.setItem(CLAVE, JSON.stringify(e)); }
-  function borrarBorrador() { e = vacio(); localStorage.removeItem(CLAVE); }
+  function borrarBorrador() { e = vacio(); localStorage.removeItem(CLAVE); archivos = []; localStorage.removeItem(CLAVE_ADJ); }
 
   /** Producto con los datos que se completaron en este ingreso (si faltaban). */
   function datosProducto(id) {
@@ -60,7 +69,8 @@ const Ingreso = (() => {
       ${esInventario() ? '' : `
       <section class="tarjeta formulario">
         <p class="titulo-seccion" style="margin:0">Adjuntar ${e.tipo === 'Sin documento' ? 'documento' : e.tipo.toLowerCase()} (opcional)</p>
-        ${archivos.length ? archivos.map((a, i) => `<div class="fila-entre"><span class="detalle">📎 ${escapar(a.name || 'foto')}</span><button type="button" class="boton-texto" data-quitar-archivo="${i}">Quitar</button></div>`).join('') : ''}
+        ${archivos.length ? archivos.map((a, i) => `<div class="fila-entre"><span class="detalle">📎 ${escapar(a.nombre)} · ${a.kb} KB</span><button type="button" class="boton-texto" data-quitar-archivo="${i}">Quitar</button></div>`).join('') : ''}
+        <p id="estado-adjuntos" class="ayuda izquierda"></p>
         ${botonesAdjuntar('ingreso')}
         <p class="ayuda izquierda">Se sube junto con el ingreso (necesita señal). También puedes agregarlo después desde Documentos.</p>
       </section>`}
@@ -197,11 +207,21 @@ const Ingreso = (() => {
     const cancelar = document.getElementById('cancelar-crear');
     if (cancelar) cancelar.addEventListener('click', () => { e.editor.creando = false; guardarBorrador(); dibujar(); });
 
-    document.querySelectorAll('[data-adjuntar]').forEach((input) => input.addEventListener('change', () => {
-      archivos = archivos.concat(Array.from(input.files)); dibujar();
+    document.querySelectorAll('[data-adjuntar]').forEach((input) => input.addEventListener('change', async () => {
+      const nuevos = Array.from(input.files);
+      input.value = '';
+      const estado = document.getElementById('estado-adjuntos');
+      for (const f of nuevos) {
+        if (estado) estado.textContent = 'Preparando ' + (f.name || 'foto') + '…';
+        try {
+          archivos.push(await Adjuntos.preparar(f));
+          if (!guardarAdjuntos()) aviso('El adjunto quedó, pero es muy grande para guardarlo en el borrador: no cierres la app antes de guardar.', 'error');
+        } catch (x) { aviso(x.message, 'error'); }
+      }
+      dibujar();
     }));
     document.querySelectorAll('[data-quitar-archivo]').forEach((b) => b.addEventListener('click', () => {
-      archivos.splice(Number(b.dataset.quitarArchivo), 1); dibujar();
+      archivos.splice(Number(b.dataset.quitarArchivo), 1); guardarAdjuntos(); dibujar();
     }));
     document.getElementById('guardar-ingreso').addEventListener('click', guardarIngreso);
     const descartar = document.getElementById('descartar');
@@ -282,20 +302,23 @@ const Ingreso = (() => {
           completar: e.completados[l.producto_id] || null
         }))
       }, 'Ingreso (' + e.tipo + (e.n_documento ? ' ' + e.n_documento : '') + '): ' + lineas + ' producto' + (lineas > 1 ? 's' : ''));
-      borrarBorrador();
       // Adjuntos: se suben al documento recién creado (si se guardó con señal).
-      let fallaron = 0;
-      if (archivos.length && !r.enCola && r.resultado && r.resultado.documento_id) {
+      const pendientes = archivos.slice();
+      let fallaron = 0, motivo = '';
+      if (pendientes.length && !r.enCola && r.resultado && r.resultado.documento_id) {
         boton.textContent = 'Subiendo adjuntos…';
-        for (const a of archivos) {
-          try { await Adjuntos.subir(r.resultado.documento_id, a); } catch (x) { fallaron++; }
+        for (const a of pendientes) {
+          try { await Adjuntos.subir(r.resultado.documento_id, a); } catch (x) { fallaron++; motivo = x.message; }
         }
-      } else if (archivos.length) {
-        fallaron = archivos.length;
+      } else if (pendientes.length) {
+        fallaron = pendientes.length; motivo = 'el ingreso quedó guardado sin señal';
       }
-      archivos = [];
+      borrarBorrador();
       if (!r.enCola) await Datos.actualizar().catch(() => {});
-      if (fallaron) setTimeout(() => aviso(fallaron + ' adjunto(s) no se subieron. Agrégalos desde Inicio → Documentos de compra.', 'error'), 3600);
+      if (fallaron) {
+        // Mensaje que no desaparece solo, para que no pase desapercibido.
+        setTimeout(() => alertaFija(fallaron + ' adjunto' + (fallaron > 1 ? 's' : '') + ' no se subi' + (fallaron > 1 ? 'eron' : 'ó') + ' (' + motivo + '). Agrégalo' + (fallaron > 1 ? 's' : '') + ' desde Inicio → Documentos de compra.'), 300);
+      }
       aviso(r.enCola ? 'Sin señal: ingreso guardado en el teléfono. Se subirá solo.' : 'Ingreso guardado (' + lineas + ' producto' + (lineas > 1 ? 's' : '') + ')');
       location.hash = '#inicio';
     } catch (x) {
